@@ -174,12 +174,6 @@ int32 CustomSaveDialog::DoModal(IntelPlugin* plugin)
 		result = dialog.mPresets.find(presetName) != dialog.mPresets.end() ? IDOK : IDCANCEL;
 	}
 
-	// Sync to globals if OK'd
-	if (result == IDOK)
-	{
-		dialog.FillGlobalStruct();
-	}
-
 	return static_cast<int32>(result);
 }
 
@@ -777,23 +771,20 @@ bool CustomSaveDialog::LoadPresetNonUIMode(string nameOfPreset)
 // ==============================================================================
 void CustomSaveDialog::FillGlobalStruct()
 {
-	// Get the compressionType from the CompressionTypeComboBox, the combo box always has the list of the valid types
-	// The itemUserData has the actual compression enumeration defined in IntelPlugin.h for a given combo box entry
-	int compressionTypeID = gComboItems[COMPRESSION_COMBO].itemAndContextStrings[mDialogData.CompressionTypeIndex].itemUserData;
-
-	switch (compressionTypeID)
+	// Map CompressionTypeIndex directly to encoding.
+	// ExtractDataFromUI sets: 0 = BGRA (Uncompressed), 1 = BC3 (DXT5).
+	// We do NOT index into gComboItems here because that vector is dynamically
+	// filtered by texture type and its size may not match CompressionTypeIndex.
+	switch (mDialogData.CompressionTypeIndex)
 	{
-		case CompressionTypeEnum::BC1:
-			globalParams->encoding_g = DXGI_FORMAT_BC1_UNORM;
+		case 0: // BGRA / Uncompressed
+			globalParams->encoding_g = DXGI_FORMAT_B8G8R8A8_UNORM;
 			break;
-		case CompressionTypeEnum::BC3:
+		case 1: // BC3 / DXT5
 			globalParams->encoding_g = DXGI_FORMAT_BC3_UNORM;
 			break;
-		case CompressionTypeEnum::UNCOMPRESSED:
-			globalParams->encoding_g = DXGI_FORMAT_R8G8B8A8_UNORM;
-			break;
 		default:
-			globalParams->encoding_g = DXGI_FORMAT_BC1_UNORM;
+			globalParams->encoding_g = DXGI_FORMAT_BC3_UNORM;
 			break;
 	}
 
@@ -1809,9 +1800,11 @@ void CustomSaveDialog::DisableUnavailableControls()
 	HWND ditheringCheck = GetDlgItem(hDlg, IDC_DITHERING_CHECK);
 	HWND errorMetricCombo = GetDlgItem(hDlg, IDC_ERRORMETRIC_COMBO);
 
-	// Get the current compression type from the combo
-	int compressionIndex = GetSelectedItem(IDC_COMPRESSION_COMBO);
-	int compressionID = gComboItems[COMPRESSION_COMBO].itemAndContextStrings[compressionIndex].itemUserData;
+	// Derive compression type directly from radio buttons (IDC_COMPRESSION_BGRA).
+	// 0 = BGRA/Uncompressed, 1 = BC3. Do NOT use gComboItems since the compression
+	// combo was replaced by radio buttons and the vector size may not match.
+	bool isBGRASelected = (SendDlgItemMessage(hDlg, IDC_COMPRESSION_BGRA, BM_GETCHECK, 0, 0) == BST_CHECKED);
+	int compressionID = isBGRASelected ? CompressionTypeEnum::UNCOMPRESSED : CompressionTypeEnum::BC3;
 
 	if (compressionID == CompressionTypeEnum::UNCOMPRESSED)
 	{

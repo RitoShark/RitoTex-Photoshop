@@ -1626,71 +1626,59 @@ void IntelPlugin::DoWritePrepare()
 }
 
 /*****************************************************************************/
-// Helper function to detect if we're saving to TEX format based on file extension
-bool IsSavingToTEXFormat(HANDLE fileHandle)
+// Detect if we're running as the TEX format plugin entry.
+// Uses formatRecord->finalSpec (New in PS 11.0 / CS4) which contains the
+// final output file path with the correct extension (.dds or .tex).
+// Photoshop writes to a .tmp file first, so dataFork/fileSpec point to .tmp,
+// but finalSpec always has the real destination path.
+static bool IsSavingToTEXFormat(FormatRecordPtr formatRecord)
 {
-	// Try method 1: GetFinalPathNameByHandleW
-	wchar_t filePath[MAX_PATH] = {0};
-	DWORD size = GetFinalPathNameByHandleW(fileHandle, filePath, MAX_PATH, FILE_NAME_NORMALIZED);
-
-	char debugMsg[512];
-	sprintf(debugMsg, "IsSavingToTEXFormat: GetFinalPathNameByHandleW returned size=%lu (handle=%p)", size, fileHandle);
-	OutputDebugStringA(debugMsg);
-
-	// Try method 2 if method 1 failed: GetFileInformationByHandleEx
-	if (size == 0 || size >= MAX_PATH)
+	if (!formatRecord)
 	{
-		OutputDebugStringA("IsSavingToTEXFormat: Trying GetFileInformationByHandleEx...");
+		OutputDebugStringA("IsSavingToTEXFormat: formatRecord is NULL, defaulting to DDS");
+		return false;
+	}
 
-		// Allocate buffer for FILE_NAME_INFO
-		BYTE buffer[sizeof(FILE_NAME_INFO) + MAX_PATH * sizeof(WCHAR)];
-		FILE_NAME_INFO* fileNameInfo = reinterpret_cast<FILE_NAME_INFO*>(buffer);
+	// finalSpec is a UTF-16 string with the final output file path
+	if (formatRecord->finalSpec)
+	{
+		const uint16* spec = formatRecord->finalSpec;
+		int len = 0;
+		while (spec[len] != 0) len++;
 
-		if (GetFileInformationByHandleEx(fileHandle, FileNameInfo, fileNameInfo, sizeof(buffer)))
+		// Search backwards for '.'
+		int dotPos = -1;
+		for (int i = len - 1; i >= 0; i--)
 		{
-			size = fileNameInfo->FileNameLength / sizeof(WCHAR);
-			if (size > 0 && size < MAX_PATH)
+			if (spec[i] == L'.')
 			{
-				wcsncpy_s(filePath, MAX_PATH, fileNameInfo->FileName, size);
-				sprintf(debugMsg, "IsSavingToTEXFormat: GetFileInformationByHandleEx succeeded, size=%lu", size);
-				OutputDebugStringA(debugMsg);
+				dotPos = i;
+				break;
 			}
 		}
-		else
+
+		if (dotPos >= 0 && (len - dotPos - 1) == 3)
 		{
-			DWORD err = GetLastError();
-			sprintf(debugMsg, "IsSavingToTEXFormat: GetFileInformationByHandleEx failed with error %lu", err);
-			OutputDebugStringA(debugMsg);
+			// Case-insensitive compare of the 3-char extension
+			uint16 e0 = spec[dotPos + 1] | 0x20; // tolower for ASCII
+			uint16 e1 = spec[dotPos + 2] | 0x20;
+			uint16 e2 = spec[dotPos + 3] | 0x20;
+			bool isTEX = (e0 == 't' && e1 == 'e' && e2 == 'x');
+
+			char dbg[512];
+			char narrowTail[64] = {0};
+			int start = (len > 60) ? len - 60 : 0;
+			for (int i = start; i < len && (i - start) < 63; i++)
+				narrowTail[i - start] = (char)(spec[i] & 0x7F);
+			sprintf(dbg, "IsSavingToTEXFormat: finalSpec='...%s', isTEX=%d", narrowTail, isTEX ? 1 : 0);
+			OutputDebugStringA(dbg);
+
+			return isTEX;
 		}
 	}
 
-	if (size > 0 && size < MAX_PATH)
-	{
-		// Convert to lowercase and check extension
-		std::wstring path(filePath);
-		std::transform(path.begin(), path.end(), path.begin(), ::towlower);
-
-		char pathDebug[256];
-		sprintf(pathDebug, "IsSavingToTEXFormat: Path length=%zu", path.length());
-		OutputDebugStringA(pathDebug);
-
-		if (path.length() >= 4)
-		{
-			std::wstring ext = path.substr(path.length() - 4);
-			bool isTex = (ext == L".tex");
-
-			char extDebug[256];
-			WideCharToMultiByte(CP_UTF8, 0, ext.c_str(), -1, extDebug, sizeof(extDebug), NULL, NULL);
-			char result[512];
-			sprintf(result, "IsSavingToTEXFormat: Extension='%s', isTEX=%d", extDebug, isTex ? 1 : 0);
-			OutputDebugStringA(result);
-
-			return isTex;
-		}
-	}
-
-	OutputDebugStringA("IsSavingToTEXFormat: Defaulting to DDS (detection failed)");
-	return false;  // Default to DDS if unknown
+	OutputDebugStringA("IsSavingToTEXFormat: finalSpec unavailable, defaulting to DDS");
+	return false;
 }
 
 void IntelPlugin::DoWriteStart()
@@ -1713,15 +1701,12 @@ void IntelPlugin::DoWriteStart()
 
 	if (GetResult() == noErr)
 	{
-		// Auto-detect format from file extension
-		bool isTEX = false;
-		if (ps.formatRecord->dataFork != 0)
-		{
-			isTEX = IsSavingToTEXFormat(reinterpret_cast<HANDLE>(ps.formatRecord->dataFork));
-		}
+		// Detect format from formatRecord->fileType (set from PiPL FmtFileType).
+		// DDS PiPL uses 'DDS ', TEX PiPL uses 'TEX '.
+		bool isTEX = IsSavingToTEXFormat(ps.formatRecord);
 
 		char debugMsg[256];
-		sprintf(debugMsg, "Saving as: %s (auto-detected from extension)", isTEX ? "TEX" : "DDS");
+		sprintf(debugMsg, "DoWriteStart: saving as: %s", isTEX ? "TEX" : "DDS");
 		OutputDebugStringA(debugMsg);
 
 		// Save in the detected format
@@ -1735,6 +1720,7 @@ void IntelPlugin::DoWriteStart()
 
 	DestroyThreads();
 }
+
 
 void IntelPlugin::DoWriteContinue()
 {
