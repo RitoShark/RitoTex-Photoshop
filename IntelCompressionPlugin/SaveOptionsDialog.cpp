@@ -26,6 +26,13 @@
 #include "resource.h"
 #include "PreviewDialog.h"
 
+//-------------------------------------------------------------------------------
+// Dark Theme Static Resources
+//-------------------------------------------------------------------------------
+HBRUSH OptionsDialog::s_brushDialogBg = nullptr;
+HBRUSH OptionsDialog::s_brushEditBg = nullptr;
+HPEN OptionsDialog::s_penBorder = nullptr;
+
 typedef vector<string>(*VStringFunc)(void);
 
 // Container for the data to associate a help button WinForm ID with the corresponding function to display the help text.
@@ -109,6 +116,43 @@ OptionsDialog::OptionsDialog(IntelPlugin* plugin_) : PIDialog()
 	{
 		// Failed to create directory.
 		plugin->UserError("Failed to get path to %USERPROFILE%\\AppData\\Local");
+	}
+}
+
+//-------------------------------------------------------------------------------
+// Destructor - Clean up theme resources
+//-------------------------------------------------------------------------------
+OptionsDialog::~OptionsDialog()
+{
+	CleanupThemeResources();
+}
+
+//-------------------------------------------------------------------------------
+// Initialize Dark Theme GDI Resources
+//-------------------------------------------------------------------------------
+void OptionsDialog::InitThemeResources()
+{
+	if (!s_brushDialogBg)
+	{
+		s_brushDialogBg = CreateSolidBrush(DarkTheme::DIALOG_BG);
+		s_brushEditBg = CreateSolidBrush(DarkTheme::EDIT_BG);
+		s_penBorder = CreatePen(PS_SOLID, 1, DarkTheme::BORDER);
+	}
+}
+
+//-------------------------------------------------------------------------------
+// Cleanup Dark Theme GDI Resources
+//-------------------------------------------------------------------------------
+void OptionsDialog::CleanupThemeResources()
+{
+	if (s_brushDialogBg)
+	{
+		DeleteObject(s_brushDialogBg);
+		DeleteObject(s_brushEditBg);
+		DeleteObject(s_penBorder);
+		s_brushDialogBg = nullptr;
+		s_brushEditBg = nullptr;
+		s_penBorder = nullptr;
 	}
 }
 
@@ -754,6 +798,10 @@ void OptionsDialog::SetUIFromData()
 }
 
 // ===========================================================================
+// Note: Dark theme for SaveOptionsDialog temporarily disabled due to
+// PIDialog::Message() being void (cannot return brush handles for WM_CTLCOLOR*)
+// PreviewDialog dark theme still functional via WindowProc
+// ===========================================================================
 
 // Called whenever user interacts with the UI - clicks a button or ticks a check box, selects a dropdown, etc.
 //parameters index: has the resource index of the control acted upon.
@@ -926,6 +974,10 @@ void OptionsDialog::Notify(int index)
 
 			UpdatePreset(LAST_SETTINGS_PRESET_NAME, mDialogData);
 		}
+
+		// CRITICAL FIX: Sync dialog data to globals before compression
+		// Without this, dithering and other settings don't reach CompressToScratchImage()
+		FillGlobalStruct();
 
 		return;
 	}

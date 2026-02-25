@@ -152,6 +152,19 @@ private:
 	int pixelStep;
 	int mouseStep;
 
+	// Preview throttling - prevents rapid recompression
+	UINT_PTR m_compressionTimer;
+	static constexpr UINT_PTR TIMER_RECOMPRESS = 1;
+	static constexpr UINT RECOMPRESS_DELAY_MS = 300;
+
+	// Dark theme GDI resources (shared with SaveOptionsDialog)
+	static HBRUSH s_brushDialogBg;
+	static HBRUSH s_brushEditBg;
+	static HPEN s_penBorder;
+
+	// Helper methods for theme management
+	void InitThemeResources();
+	void CleanupThemeResources();
 
 public:
 

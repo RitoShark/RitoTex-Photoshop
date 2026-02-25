@@ -26,6 +26,17 @@
 #include <map>
 #include <string>
 
+//-------------------------------------------------------------------------------
+// Dark Theme Color Palette
+//-------------------------------------------------------------------------------
+namespace DarkTheme {
+	constexpr COLORREF DIALOG_BG      = RGB(45, 45, 48);    // VS Code dark background
+	constexpr COLORREF TEXT_PRIMARY   = RGB(220, 220, 220); // Light text
+	constexpr COLORREF TEXT_SECONDARY = RGB(169, 169, 169); // Gray text
+	constexpr COLORREF EDIT_BG        = RGB(30, 30, 30);    // Edit control background
+	constexpr COLORREF BUTTON_BG      = RGB(60, 60, 64);    // Button background
+	constexpr COLORREF BORDER         = RGB(100, 100, 100); // Borders/accents
+}
 
 //This struct hold the UI data, all info do produced a compressed image is located here. used also to store/load into presets.
 struct DialogData
@@ -118,6 +129,16 @@ private:
 	uint32 GetSelectedMipLevelIndex();
 	void SetContextString(uint32 contextStringID, uint32 index);
 
+	// Dark theme GDI resources (created once, reused across all dialog instances)
+	static HBRUSH s_brushDialogBg;
+	static HBRUSH s_brushEditBg;
+	static HPEN s_penBorder;
+
+	// Helper methods for theme management
+	void InitThemeResources();
+	void CleanupThemeResources();
+	static INT_PTR CALLBACK DarkThemeDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+
 	// overrides
 
 	virtual void Init(void) override;
@@ -127,7 +148,7 @@ private:
 		
 public:
 	explicit  OptionsDialog(IntelPlugin* globals);
-	~OptionsDialog() {}
+	~OptionsDialog();
 	
 	bool LoadPresetNonUIMode(string name);
 	void FillGlobalStruct();

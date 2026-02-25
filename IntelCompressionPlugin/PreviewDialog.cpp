@@ -23,9 +23,16 @@
 #include <vector>
 #include <string>
 #include <sstream>
-
+#include "SaveOptionsDialog.h"  // For DarkTheme colors
 
 using namespace DirectX;
+
+//-------------------------------------------------------------------------------
+// Dark Theme Static Resources (reuse from SaveOptionsDialog)
+//-------------------------------------------------------------------------------
+HBRUSH PreviewDialog::s_brushDialogBg = nullptr;
+HBRUSH PreviewDialog::s_brushEditBg = nullptr;
+HPEN PreviewDialog::s_penBorder = nullptr;
 
 //For mouse tracking, when panning zooming
 POINT mouseDownPos, mouseOldpos;
@@ -62,23 +69,62 @@ PreviewDialog::PreviewDialog(IntelPlugin* _plugin)
 	pixelStep = mouseStep = 0;
 	previewBufferWidth = 0;
 	previewBufferHeight = 0;
+	m_compressionTimer = 0;  // Initialize throttling timer
 }
 
-PreviewDialog::~PreviewDialog() 
+PreviewDialog::~PreviewDialog()
 {
+	// Kill compression throttling timer if active
+	if (m_compressionTimer && hDlg)
+	{
+		KillTimer(hDlg, TIMER_RECOMPRESS);
+		m_compressionTimer = 0;
+	}
+
 	//Exiting the dialog, free space
 	if (previewBuffer != NULL)
 	{
 		delete[] previewBuffer;
 		previewBuffer = NULL;
 	}
-	
+
 	if (previewCompressedBuffer != NULL)
 	{
 		delete[] previewCompressedBuffer;
 		previewCompressedBuffer = NULL;
 	}
 
+	// Cleanup theme resources
+	CleanupThemeResources();
+}
+
+//-------------------------------------------------------------------------------
+// Initialize Dark Theme GDI Resources
+//-------------------------------------------------------------------------------
+void PreviewDialog::InitThemeResources()
+{
+	if (!s_brushDialogBg)
+	{
+		s_brushDialogBg = CreateSolidBrush(DarkTheme::DIALOG_BG);
+		s_brushEditBg = CreateSolidBrush(DarkTheme::EDIT_BG);
+		s_penBorder = CreatePen(PS_SOLID, 1, DarkTheme::BORDER);
+	}
+}
+
+//-------------------------------------------------------------------------------
+// Cleanup Dark Theme GDI Resources
+//-------------------------------------------------------------------------------
+void PreviewDialog::CleanupThemeResources()
+{
+	if (s_brushDialogBg)
+	{
+		DeleteObject(s_brushDialogBg);
+		DeleteObject(s_brushEditBg);
+		DeleteObject(s_penBorder);
+		s_brushDialogBg = nullptr;
+		s_brushEditBg = nullptr;
+		s_penBorder = nullptr;
+	}
 }
 
 void PreviewDialog::CalculateOptimizationParameters(int width, int height)
@@ -457,6 +503,9 @@ void PreviewDialog::allocateBuffers()
 //Init planes and fill photoshop buffer with image
 void PreviewDialog::Init()
 {
+	// Initialize dark theme GDI resources
+	InitThemeResources();
+
 	//Store number of available planes
 	previewPlanes = plugin->GetFormatRecord()->planes;
 	previewPlanes = clampGeneral(previewPlanes, 1, 4);
@@ -754,12 +803,12 @@ BOOL PreviewDialog::WindowProc(UINT wMsg, WPARAM wParam, LPARAM lParam)   // Win
 									//Store settigns selected in combo box
 									SetGlobalEncoding(index);
 								}
-							
-								//Update the pixel buffer with this channel info
-								updatePreviewBuffer();
 
-								//Issue a redraw for these areas
-								InvalidatePreviews(false);
+								// Throttled recompression - cancel existing timer and start new one
+								if (m_compressionTimer)
+									KillTimer(hDlg, TIMER_RECOMPRESS);
+
+								m_compressionTimer = SetTimer(hDlg, TIMER_RECOMPRESS, RECOMPRESS_DELAY_MS, nullptr);
 							}
 						}
 						break;
@@ -768,8 +817,50 @@ BOOL PreviewDialog::WindowProc(UINT wMsg, WPARAM wParam, LPARAM lParam)   // Win
 				}
 				break;
 			}
+
+		// Throttling timer - triggers delayed recompression
+		case WM_TIMER:
+			if (wParam == TIMER_RECOMPRESS)
+			{
+				KillTimer(hDlg, TIMER_RECOMPRESS);
+				m_compressionTimer = 0;
+				updatePreviewBuffer();  // Actual recompression
+				InvalidatePreviews(false);
+			}
+			break;
+
+		// Dark theme message handlers
+		case WM_CTLCOLORDLG:
+		{
+			return (LRESULT)s_brushDialogBg;
+		}
+
+		case WM_CTLCOLORSTATIC:
+		{
+			HDC hDC = (HDC)wParam;
+			SetTextColor(hDC, DarkTheme::TEXT_PRIMARY);
+			SetBkColor(hDC, DarkTheme::DIALOG_BG);
+			SetBkMode(hDC, TRANSPARENT);
+			return (LRESULT)s_brushDialogBg;
+		}
+
+		case WM_CTLCOLOREDIT:
+		case WM_CTLCOLORLISTBOX:
+		{
+			HDC hDC = (HDC)wParam;
+			SetTextColor(hDC, DarkTheme::TEXT_PRIMARY);
+			SetBkColor(hDC, DarkTheme::EDIT_BG);
+			return (LRESULT)s_brushEditBg;
+		}
+
 		case WM_DESTROY:
 			{
+				// Kill throttling timer if active
+				if (m_compressionTimer)
+				{
+					KillTimer(hDlg, TIMER_RECOMPRESS);
+					m_compressionTimer = 0;
+				}
 				return FALSE;
 			}
 		case WM_LBUTTONDOWN:

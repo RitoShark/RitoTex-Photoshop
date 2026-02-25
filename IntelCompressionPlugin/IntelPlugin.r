@@ -75,14 +75,27 @@
 	
 
 //-------------------------------------------------------------------------------
-//	PiPL resource
+//	PiPL resources - Dual format registration (DDS and TEX)
 //-------------------------------------------------------------------------------
 
-resource 'PiPL' (ResourceID, plugInName " PiPL", purgeable)
+// Define separate resource IDs for each format
+#define ResourceID_DDS  16000
+#define ResourceID_TEX  16001
+
+// For backward compatibility with aete resource
+#ifndef ResourceID
+#define ResourceID ResourceID_DDS
+#endif
+
+//-------------------------------------------------------------------------------
+//	DDS Format PiPL
+//-------------------------------------------------------------------------------
+
+resource 'PiPL' (ResourceID_DDS, "RitoTex DDS PiPL", purgeable)
 {
     {
 		Kind { ImageFormat },
-		Name { plugInName },
+		Name { plugInName " DDS" },
 		Category { ".."vendorName },
 		Version { (latestFormatVersion << 16) | latestFormatSubVersion },
 
@@ -102,10 +115,10 @@ resource 'PiPL' (ResourceID, plugInName " PiPL", purgeable)
 		#endif
 
 		// ClassID, eventID, aete ID, uniqueString:
-		HasTerminology { plugInClassID, 
-		                 plugInEventID, 
-						 ResourceID, 
-						 vendorName " " plugInName },
+		HasTerminology { plugInClassID,
+		                 plugInEventID,
+						 ResourceID_DDS,
+						 vendorName " " plugInName " DDS" },
 		
 		SupportedModes
 		{
@@ -130,15 +143,15 @@ resource 'PiPL' (ResourceID, plugInName " PiPL", purgeable)
 		// 16 bit row and columns
 		FormatMaxSize { { 32767, 32767 } },
 
-		FormatMaxChannels { {   1, 24, 24, 24, 24, 24, 
+		FormatMaxChannels { {   1, 24, 24, 24, 24, 24,
 							   24, 24, 24, 24, 24, 24 } },
-	
+
+		// DDS-only format specification
 		FmtFileType { 'DDS ', 'DDSX' },
-		//ReadTypes { { 'DDSX', 'TEX ' } },
-		FilteredTypes { { 'DDSX', 'TEX ' } },
-		ReadExtensions { { 'DDS ', 'TEX ' } },
-		WriteExtensions { { 'DDS ', 'TEX ' } },
-		FilteredExtensions { { 'DDS ', 'TEX ' } },
+		FilteredTypes { { 'DDSX', '    ' } },
+		ReadExtensions { { 'DDS ' } },
+		WriteExtensions { { 'DDS ' } },
+		FilteredExtensions { { 'DDS ' } },
 		FormatFlags { fmtDoesNotSaveImageResources, 
 		              fmtCanRead, 
 					  fmtCanWrite, 
@@ -153,6 +166,84 @@ resource 'PiPL' (ResourceID, plugInName " PiPL", purgeable)
 		}
 	};
 
+//-------------------------------------------------------------------------------
+//	TEX Format PiPL
+//-------------------------------------------------------------------------------
+
+resource 'PiPL' (ResourceID_TEX, "RitoTex TEX PiPL", purgeable)
+{
+    {
+		Kind { ImageFormat },
+		Name { plugInName " TEX" },
+		Category { ".."vendorName },
+		Version { (latestFormatVersion << 16) | latestFormatSubVersion },
+
+		#ifdef __PIMac__
+			#if (defined(__x86_64__))
+				CodeMacIntel64 { "PluginMain" },
+			#endif
+			#if (defined(__i386__))
+				CodeMacIntel32 { "PluginMain" },
+			#endif
+		#else
+			#if defined(_WIN64)
+				CodeWin64X86 { "PluginMain" },
+			#else
+				CodeWin32X86 { "PluginMain" },
+			#endif
+		#endif
+
+		// ClassID, eventID, aete ID, uniqueString:
+		HasTerminology { plugInClassID,
+		                 plugInEventID,
+						 ResourceID_TEX,
+						 vendorName " " plugInName " TEX" },
+
+		SupportedModes
+		{
+			noBitmap, doesSupportGrayScale,
+			noIndexedColor, doesSupportRGBColor,
+			noCMYKColor, noHSLColor,
+			noHSBColor, doesSupportMultichannel,
+			noDuotone, noLABColor
+		},
+
+		EnableInfo
+		{
+			"in (PSHOP_ImageMode, GrayScaleMode, RGBMode, MultichannelMode) || PSHOP_ImageDepth == 16 || PSHOP_ImageDepth == 32"
+		},
+
+
+		// New for Photoshop 8, document sizes that are really big
+		// 32 bit row and columns, 2,000,000 current limit but we can handle more
+		PlugInMaxSize { 32767, 32767 },
+
+		// For older Photoshops that only support 30000 pixel documents,
+		// 16 bit row and columns
+		FormatMaxSize { { 32767, 32767 } },
+
+		FormatMaxChannels { {   1, 24, 24, 24, 24, 24,
+							   24, 24, 24, 24, 24, 24 } },
+
+		// TEX-only format specification
+		FmtFileType { 'TEX ', 'DDSX' },
+		FilteredTypes { { 'TEX ', '    ' } },
+		ReadExtensions { { 'TEX ' } },
+		WriteExtensions { { 'TEX ' } },
+		FilteredExtensions { { 'TEX ' } },
+		FormatFlags { fmtDoesNotSaveImageResources,
+		              fmtCanRead,
+					  fmtCanWrite,
+					  fmtCanWriteIfRead,
+					  fmtCanWriteTransparency,
+					  fmtCanCreateThumbnail },
+		FormatICCFlags { iccCannotEmbedGray,
+						 iccCannotEmbedIndexed,
+						 iccCannotEmbedRGB,
+						 iccCannotEmbedCMYK },
+		FormatLayerSupport { doesSupportFormatLayers }
+		}
+	};
 
 //-------------------------------------------------------------------------------
 

@@ -15,7 +15,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "IntelPlugin.h"
 #include "IntelPluginUIWin.h"
-#include "SaveOptionsDialog.h"
+#include "CustomSaveDialog.h"
 #include <memory>
 #include <algorithm>
 #include <string>
@@ -1708,7 +1708,7 @@ void IntelPlugin::DoWriteStart()
 	}
 
 	//Show main dialog and get parameters
-	if (OptionsDialog::DoModal(this) != IDOK)
+	if (CustomSaveDialog::DoModal(this) != IDOK)
 		SetResult(userCanceledErr);
 
 	if (GetResult() == noErr)
@@ -2493,9 +2493,9 @@ void IntelPlugin::DoReadStart()
 
 	//Rewind to start of file
 	OSErr err= PSSDKSetFPos (ps.formatRecord->dataFork, fsFromStart, 0);
-	if (err != noErr) 
+	if (err != noErr)
 	{
-		errorMessage(LINE_STRING, "Err");
+		errorMessage("Failed to seek to start of TEX file", "TEX Load Error");
 		SetResult(err);
 		showNormalCursor();
 		return;
@@ -2507,7 +2507,7 @@ void IntelPlugin::DoReadStart()
 	err = PSSDKRead(ps.formatRecord->dataFork, &texHeaderSize, header.get());
 	if (err != noErr)
 	{
-		errorMessage(LINE_STRING, "Err");
+		errorMessage("Failed to read TEX header (12 bytes)", "TEX Load Error");
 		SetResult(err);
 		showNormalCursor();
 		return;
@@ -2565,7 +2565,7 @@ void IntelPlugin::DoReadStart()
 		err = PSSDKRead(ps.formatRecord->dataFork, &readCount, pixelData.get());
 		if (err != noErr)
 		{
-			errorMessage(LINE_STRING, "Err");
+			errorMessage("Failed to read TEX compressed pixel data", "TEX Load Error");
 			SetResult(err);
 			showNormalCursor();
 			return;
@@ -2840,13 +2840,13 @@ void IntelPlugin::DoReadContinue()
 		auto imageData = std::make_unique<unsigned long[]>(stride * texLoadInfo.header->image_height);
 		if (!imageData)
 		{
-			errorMessage(LINE_STRING, "Err");
+			errorMessage("Failed to allocate decompression buffer", "TEX Load Error");
 			SetResult(memFullErr);
 			return;
 		}
 
 		if (!texLoadInfo.pixelData) {
-			errorMessage(LINE_STRING, "Err");
+			errorMessage("Invalid pixel data pointer", "TEX Load Error");
 			SetResult(memFullErr);
 			return;
 		}
@@ -2862,7 +2862,7 @@ void IntelPlugin::DoReadContinue()
 		auto finalImage = std::make_unique<unsigned long[]>(stride * texLoadInfo.header->image_height);
 		if (!finalImage)
 		{
-			errorMessage(LINE_STRING, "Err");
+			errorMessage("Failed to allocate final image buffer", "TEX Load Error");
 			SetResult(memFullErr);
 			return;
 		}
@@ -2888,7 +2888,7 @@ void IntelPlugin::DoReadContinue()
 		Ptr pixelData = sPSBuffer->New(&bufferSize, bufferSize);
 		if (pixelData == NULL)
 		{
-			errorMessage(LINE_STRING, "Err");
+			errorMessage("Failed to allocate Photoshop buffer for image data", "TEX Load Error");
 			SetResult(memFullErr);
 			return;
 		}
