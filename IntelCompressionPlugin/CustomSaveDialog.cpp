@@ -19,8 +19,8 @@
 #include "resource.h"
 #include "IntelPluginName.h"
 #include "IntelPluginUIWin.h"
-#include "PreviewDialog.h"
 #include "PIUFile.h"
+#include "PIProperties.h"
 #include <vector>
 #include <list>
 #include <sstream>
@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <uxtheme.h>
 #include <windowsx.h>
+#include <cmath>
 #pragma comment(lib, "uxtheme.lib")
 
 using namespace std;
@@ -39,6 +40,122 @@ using namespace std;
 HBRUSH CustomSaveDialog::s_brushDialogBg = nullptr;
 HBRUSH CustomSaveDialog::s_brushEditBg = nullptr;
 HPEN CustomSaveDialog::s_penBorder = nullptr;
+
+//-------------------------------------------------------------------------------
+// Host-adaptive palette storage + populator
+//-------------------------------------------------------------------------------
+namespace DarkTheme {
+	// Defaults = the original dark palette. Overwritten by InitFromHost() when
+	// the host exposes its interface colors (so light themes work too).
+	COLORREF DIALOG_BG       = RGB(30, 30, 30);
+	COLORREF TITLEBAR_BG     = RGB(24, 24, 24);
+	COLORREF TEXT_PRIMARY    = RGB(230, 230, 230);
+	COLORREF TEXT_SECONDARY  = RGB(140, 140, 140);
+	COLORREF EDIT_BG         = RGB(38, 38, 38);
+	COLORREF BUTTON_BG       = RGB(55, 55, 58);
+	COLORREF BORDER          = RGB(70, 70, 74);
+	COLORREF ACCENT          = RGB(0, 122, 204);
+	COLORREF ACCENT_HOVER    = RGB(28, 151, 234);
+	COLORREF CLOSE_HOVER     = RGB(196, 43, 28);
+	COLORREF CHECK_BG        = RGB(38, 38, 38);
+	COLORREF CHECK_MARK      = RGB(0, 122, 204);
+	COLORREF COMBO_HIGHLIGHT = RGB(50, 50, 54);
+	COLORREF SEPARATOR       = RGB(50, 50, 54);
+
+	namespace {
+		// Pull one interface color (full-depth color32) from the host.
+		bool GetHostColor(int8 index, COLORREF& out)
+		{
+			if (sPSProperty == NULL)
+				return false;
+
+			Handle h = NULL;
+			OSErr err = (*sPSProperty)->getPropertyProc(
+				kPhotoshopSignature, propInterfaceColor, index, NULL, &h);
+			if (err || h == NULL)
+				return false;
+
+			bool ok = false;
+			Boolean oldLock = FALSE;
+			PIInterfaceColor* p = NULL;
+			(*sPSHandle)->SetLock(h, true, reinterpret_cast<char**>(&p), &oldLock);
+			if (p != NULL)
+			{
+				out = RGB(p->color32.r, p->color32.g, p->color32.b);
+				(*sPSHandle)->SetLock(h, false, reinterpret_cast<char**>(&p), &oldLock);
+				ok = true;
+			}
+			(*sPSHandle)->Dispose(h);
+			return ok;
+		}
+
+		double Luma(COLORREF c)
+		{
+			return 0.299 * GetRValue(c) + 0.587 * GetGValue(c) + 0.114 * GetBValue(c);
+		}
+
+		COLORREF Shade(COLORREF c, int delta) // +lighten / -darken, clamped
+		{
+			int r = max(0, min(255, (int)GetRValue(c) + delta));
+			int g = max(0, min(255, (int)GetGValue(c) + delta));
+			int b = max(0, min(255, (int)GetBValue(c) + delta));
+			return RGB(r, g, b);
+		}
+
+		COLORREF Mix(COLORREF a, COLORREF b, double t)
+		{
+			int r = (int)(GetRValue(a) * (1 - t) + GetRValue(b) * t);
+			int g = (int)(GetGValue(a) * (1 - t) + GetGValue(b) * t);
+			int bb = (int)(GetBValue(a) * (1 - t) + GetBValue(b) * t);
+			return RGB(r, g, bb);
+		}
+	}
+
+	void InitFromHost()
+	{
+		// The panel fill is the most representative "background" the host gives
+		// us; everything else is derived relative to it so a light theme yields
+		// dark text and a dark theme yields light text.
+		COLORREF panel, btnUp, btnDown, border, iconActive, red;
+
+		bool gotPanel  = GetHostColor(kPIInterfacePaletteFill,    panel);
+		bool gotBtnUp  = GetHostColor(kPIInterfaceButtonUpFill,   btnUp);
+		bool gotBtnDn  = GetHostColor(kPIInterfaceButtonDownFill, btnDown);
+		bool gotBorder = GetHostColor(kPIInterfaceBorder,         border);
+		bool gotIcon   = GetHostColor(kPIInterfaceIconFillActive, iconActive);
+		bool gotRed    = GetHostColor(kPIInterfaceRed,            red);
+
+		// If we couldn't even read the panel fill, keep the dark defaults.
+		if (!gotPanel)
+			return;
+
+		bool isLight = Luma(panel) > 128.0;
+
+		DIALOG_BG   = panel;
+		TITLEBAR_BG = isLight ? Shade(panel, -18) : Shade(panel, -10);
+		EDIT_BG     = isLight ? Shade(panel, -14) : Shade(panel, +12);
+		CHECK_BG    = EDIT_BG;
+
+		TEXT_PRIMARY   = isLight ? RGB(28, 28, 28)    : RGB(230, 230, 230);
+		TEXT_SECONDARY = isLight ? RGB(120, 120, 120) : RGB(140, 140, 140);
+
+		BUTTON_BG = gotBtnUp ? btnUp : Shade(panel, isLight ? -20 : +25);
+		BORDER    = gotBorder ? border : Shade(panel, isLight ? -45 : +40);
+		SEPARATOR = Mix(panel, BORDER, 0.5);
+		COMBO_HIGHLIGHT = isLight ? Shade(panel, -22) : Shade(panel, +20);
+
+		// Accent: keep a consistent blue action color across every host theme.
+		// The host's "button down" fill is just its pressed-button gray (often
+		// near-black on light themes), which reads as broken for a primary
+		// action button — so we don't use it. Blue contrasts on light AND dark.
+		(void)gotBtnDn; (void)gotIcon; (void)btnDown; (void)iconActive;
+		ACCENT       = RGB(0, 122, 204);
+		ACCENT_HOVER = Shade(ACCENT, +24);
+		CHECK_MARK   = ACCENT;
+
+		if (gotRed) CLOSE_HOVER = red; // host's red, else keep default
+	}
+}
 
 //-------------------------------------------------------------------------------
 // Compression formats shown in the custom dropdown (display order).
@@ -264,14 +381,25 @@ INT_PTR CustomSaveDialog::WindowProc(UINT msg, WPARAM wParam, LPARAM lParam)
 			// Draw custom title bar
 			DrawTitleBar(hDC, rcClient);
 
-			// Draw subtle border around the entire window
-			HPEN hPen = CreatePen(PS_SOLID, 1, DarkTheme::BORDER);
-			HPEN hOldPen = (HPEN)SelectObject(hDC, hPen);
-			HBRUSH hOldBrush = (HBRUSH)SelectObject(hDC, GetStockObject(NULL_BRUSH));
-			Rectangle(hDC, rcClient.left, rcClient.top, rcClient.right, rcClient.bottom);
-			SelectObject(hDC, hOldPen);
-			SelectObject(hDC, hOldBrush);
-			DeleteObject(hPen);
+			// Draw a subtle 1px frame. Derive it from the dialog background (a bit
+			// darker) on light themes so it never shows as a bright/white line.
+			{
+				int bgL = (299 * GetRValue(DarkTheme::DIALOG_BG)
+				        + 587 * GetGValue(DarkTheme::DIALOG_BG)
+				        + 114 * GetBValue(DarkTheme::DIALOG_BG)) / 1000;
+				COLORREF frame = (bgL > 128)
+					? RGB(max(0, GetRValue(DarkTheme::DIALOG_BG) - 40),
+					      max(0, GetGValue(DarkTheme::DIALOG_BG) - 40),
+					      max(0, GetBValue(DarkTheme::DIALOG_BG) - 40))
+					: DarkTheme::BORDER;
+				HPEN hPen = CreatePen(PS_SOLID, 1, frame);
+				HPEN hOldPen = (HPEN)SelectObject(hDC, hPen);
+				HBRUSH hOldBrush = (HBRUSH)SelectObject(hDC, GetStockObject(NULL_BRUSH));
+				Rectangle(hDC, rcClient.left, rcClient.top, rcClient.right, rcClient.bottom);
+				SelectObject(hDC, hOldPen);
+				SelectObject(hDC, hOldBrush);
+				DeleteObject(hPen);
+			}
 
 			EndPaint(hDlg, &ps);
 			return TRUE;
@@ -371,39 +499,42 @@ INT_PTR CustomSaveDialog::WindowProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
 				// Choose colors based on button type
 				COLORREF bgColor;
-				if (pDIS->CtlID == IDOK)
-					bgColor = DarkTheme::ACCENT;
-				else if (pDIS->CtlID == IDC_PREVIEW_BUTTON)
+				bool isPrimary = (pDIS->CtlID == IDOK);
+				if (isPrimary)
 					bgColor = DarkTheme::ACCENT;
 				else
 					bgColor = DarkTheme::BUTTON_BG;
 
 				if (isPressed)
 				{
-					int r = max(0, (int)GetRValue(bgColor) - 30);
-					int g = max(0, (int)GetGValue(bgColor) - 30);
-					int b = max(0, (int)GetBValue(bgColor) - 30);
+					int r = max(0, (int)GetRValue(bgColor) - 25);
+					int g = max(0, (int)GetGValue(bgColor) - 25);
+					int b = max(0, (int)GetBValue(bgColor) - 25);
 					bgColor = RGB(r, g, b);
 				}
 
-				// Fill button background with rounded corners feel
-				HBRUSH hBrush = CreateSolidBrush(bgColor);
 				RECT rcBtn = pDIS->rcItem;
-				FillRect(pDIS->hDC, &rcBtn, hBrush);
-				DeleteObject(hBrush);
+				const int radius = 9;
 
-				// Draw button border
-				COLORREF borderColor = (pDIS->CtlID == IDOK || pDIS->CtlID == IDC_PREVIEW_BUTTON)
-					? DarkTheme::ACCENT : DarkTheme::BORDER;
+				// Paint the dialog background behind the button so the rounded
+				// corners blend in instead of leaving square edges.
+				FillRect(pDIS->hDC, &rcBtn, s_brushDialogBg);
+
+				// Border: Export/Preview get the accent outline, Cancel a neutral one.
+				COLORREF borderColor = isPrimary ? DarkTheme::ACCENT : DarkTheme::BORDER;
 				if (isFocused)
 					borderColor = DarkTheme::ACCENT_HOVER;
-				HPEN hPen = CreatePen(PS_SOLID, 1, borderColor);
-				HPEN hOldPen = (HPEN)SelectObject(pDIS->hDC, hPen);
-				HBRUSH hOldBrush = (HBRUSH)SelectObject(pDIS->hDC, GetStockObject(NULL_BRUSH));
-				Rectangle(pDIS->hDC, rcBtn.left, rcBtn.top, rcBtn.right, rcBtn.bottom);
+
+				// Rounded fill + border in one RoundRect call.
+				HBRUSH hBrush = CreateSolidBrush(bgColor);
+				HPEN   hPen   = CreatePen(PS_SOLID, 1, borderColor);
+				HBRUSH hOldBrush = (HBRUSH)SelectObject(pDIS->hDC, hBrush);
+				HPEN   hOldPen   = (HPEN)SelectObject(pDIS->hDC, hPen);
+				RoundRect(pDIS->hDC, rcBtn.left, rcBtn.top, rcBtn.right, rcBtn.bottom, radius, radius);
 				SelectObject(pDIS->hDC, hOldPen);
 				SelectObject(pDIS->hDC, hOldBrush);
 				DeleteObject(hPen);
+				DeleteObject(hBrush);
 
 				// Draw button text
 				char szText[256];
@@ -411,7 +542,12 @@ INT_PTR CustomSaveDialog::WindowProc(UINT msg, WPARAM wParam, LPARAM lParam)
 				HFONT hOldFont = nullptr;
 				if (m_hUIFont)
 					hOldFont = (HFONT)SelectObject(pDIS->hDC, m_hUIFont);
-				SetTextColor(pDIS->hDC, DarkTheme::TEXT_PRIMARY);
+				// Contrast the text against the BUTTON's own fill (host accent can be
+				// light OR dark), so it never renders dark-on-dark / light-on-light.
+				{
+					double bl = 0.299 * GetRValue(bgColor) + 0.587 * GetGValue(bgColor) + 0.114 * GetBValue(bgColor);
+					SetTextColor(pDIS->hDC, (bl > 140.0) ? RGB(20, 20, 20) : RGB(245, 245, 245));
+				}
 				SetBkMode(pDIS->hDC, TRANSPARENT);
 
 				RECT rcText = rcBtn;
@@ -436,10 +572,13 @@ INT_PTR CustomSaveDialog::WindowProc(UINT msg, WPARAM wParam, LPARAM lParam)
 			UINT ctlId = LOWORD(wParam);
 			if (ctlId == IDC_DITHERING_CHECK)
 			{
-				// Toggle checkbox state
-				m_ditheringChecked = !m_ditheringChecked;
-				// Redraw the checkbox
-				InvalidateRect(GetDlgItem(hDlg, IDC_DITHERING_CHECK), NULL, FALSE);
+				// Only toggle when the control is actually enabled (BC1/BC3).
+				HWND hCheck = GetDlgItem(hDlg, IDC_DITHERING_CHECK);
+				if (IsWindowEnabled(hCheck))
+				{
+					m_ditheringChecked = !m_ditheringChecked;
+					InvalidateRect(hCheck, NULL, FALSE);
+				}
 			}
 			HandleCommand(wParam, lParam);
 			return TRUE;
@@ -648,6 +787,10 @@ void CustomSaveDialog::DrawCustomCheckbox(LPDRAWITEMSTRUCT pDIS)
 	HDC hDC = pDIS->hDC;
 	RECT rc = pDIS->rcItem;
 
+	// A BS_OWNERDRAW button does not reliably get ODS_DISABLED, so query the
+	// window directly. When disabled we dim the box, checkmark and label.
+	bool enabled = IsWindowEnabled(pDIS->hwndItem) != FALSE;
+
 	// Fill background
 	HBRUSH hBgBrush = CreateSolidBrush(DarkTheme::DIALOG_BG);
 	FillRect(hDC, &rc, hBgBrush);
@@ -658,14 +801,17 @@ void CustomSaveDialog::DrawCustomCheckbox(LPDRAWITEMSTRUCT pDIS)
 	int boxY = rc.top + (rc.bottom - rc.top - boxSize) / 2;
 	RECT rcBox = { rc.left, boxY, rc.left + boxSize, boxY + boxSize };
 
+	// Accent used for the checked state, dimmed when the control is disabled.
+	COLORREF accentFill = enabled ? DarkTheme::CHECK_MARK : DarkTheme::BORDER;
+
 	// Draw checkbox box
-	COLORREF boxBg = m_ditheringChecked ? DarkTheme::CHECK_MARK : DarkTheme::CHECK_BG;
+	COLORREF boxBg = m_ditheringChecked ? accentFill : DarkTheme::CHECK_BG;
 	HBRUSH hBoxBrush = CreateSolidBrush(boxBg);
 	FillRect(hDC, &rcBox, hBoxBrush);
 	DeleteObject(hBoxBrush);
 
 	// Draw box border
-	COLORREF borderColor = m_ditheringChecked ? DarkTheme::CHECK_MARK : DarkTheme::BORDER;
+	COLORREF borderColor = m_ditheringChecked ? accentFill : DarkTheme::BORDER;
 	HPEN hPen = CreatePen(PS_SOLID, 1, borderColor);
 	HPEN hOldPen = (HPEN)SelectObject(hDC, hPen);
 	HBRUSH hOldBrush = (HBRUSH)SelectObject(hDC, GetStockObject(NULL_BRUSH));
@@ -677,7 +823,8 @@ void CustomSaveDialog::DrawCustomCheckbox(LPDRAWITEMSTRUCT pDIS)
 	// Draw checkmark if checked
 	if (m_ditheringChecked)
 	{
-		HPEN hCheckPen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+		COLORREF checkColor = enabled ? RGB(255, 255, 255) : DarkTheme::TEXT_SECONDARY;
+		HPEN hCheckPen = CreatePen(PS_SOLID, 2, checkColor);
 		HPEN hOldCheckPen = (HPEN)SelectObject(hDC, hCheckPen);
 
 		// Checkmark shape (L shape rotated)
@@ -696,8 +843,7 @@ void CustomSaveDialog::DrawCustomCheckbox(LPDRAWITEMSTRUCT pDIS)
 	if (m_hUIFont)
 		hOldFont = (HFONT)SelectObject(hDC, m_hUIFont);
 
-	SetTextColor(hDC, (pDIS->itemState & ODS_DISABLED)
-		? DarkTheme::TEXT_SECONDARY : DarkTheme::TEXT_PRIMARY);
+	SetTextColor(hDC, enabled ? DarkTheme::TEXT_PRIMARY : DarkTheme::TEXT_SECONDARY);
 	SetBkMode(hDC, TRANSPARENT);
 
 	RECT rcLabel = { rcBox.right + 6, rc.top, rc.right, rc.bottom };
@@ -1231,7 +1377,12 @@ void CustomSaveDialog::SetFontCompressionCombo()
 // ==============================================================================
 void CustomSaveDialog::Init(void)
 {
-	// Initialize theme resources
+	// Pull the palette from Photoshop's interface colors FIRST, so the brushes
+	// created below (and all painting) use host-matched colors. Falls back to
+	// the dark defaults if the host query fails.
+	DarkTheme::InitFromHost();
+
+	// Initialize theme resources (brushes/pens created from the palette above)
 	InitThemeResources();
 
 	// Disable visual styles on all themed controls so our dark theme
@@ -1279,27 +1430,55 @@ void CustomSaveDialog::Init(void)
 		return TRUE;
 	}, 0);
 
-	// Initialize defaults
+	// Center the dialog on the work area of the monitor it appears on, so it
+	// no longer spawns in the top-left corner every time.
+	CenterDialog();
+
+	// Start from clean defaults, then auto-load the last-used settings (if any).
 	InitDataNoPreset(mDialogData);
 
-	// Force Color+Alpha as texture type (index 1 = Color+Alpha)
+	// LoadPresets() reads every *.preset file. The "-last-used-" preset is
+	// written into mDialogData directly by ReadPreset(), so after this call
+	// mDialogData reflects whatever the user picked on their previous export.
+	LoadPresets();
+
+	// Always Color+Alpha for the .tex pipeline regardless of stored value.
 	mDialogData.TextureTypeIndex = COLOR_ALPHA;
 
-	// BC7 is the default compression (index 0 in kCompressionFormats).
-	mDialogData.CompressionTypeIndex = 0; // BC7
-
-	// Dithering on by default (only affects BC1/BC3).
-	mDialogData.UseDithering = true;
-	m_ditheringChecked = true;
-	mDialogData.UseUniformMetric = false;
+	// Keep the owner-drawn checkbox member in sync with the (possibly restored) data.
+	m_ditheringChecked = mDialogData.UseDithering;
 
 	// Build the fully custom dropdowns (compression / mipmap / error metric).
 	BuildCustomDropdowns();
 
-	// Initial hint + quality-control state for the default (BC7).
-	SetDlgItemTextA(hDlg, IDC_COMPRESSION_HINT, kCompressionFormats[0].hint);
-	InvalidateRect(GetDlgItem(hDlg, IDC_DITHERING_CHECK), NULL, FALSE);
+	// Sync every control to the restored / default data and refresh hint + state.
+	SetUIFromData();
 	UpdateQualityControlsState();
+}
+
+// ==============================================================================
+// CenterDialog - Position the dialog in the middle of its monitor's work area
+// ==============================================================================
+void CustomSaveDialog::CenterDialog()
+{
+	RECT rcDlg;
+	GetWindowRect(hDlg, &rcDlg);
+	int dlgW = rcDlg.right - rcDlg.left;
+	int dlgH = rcDlg.bottom - rcDlg.top;
+
+	// Use the work area of the monitor the dialog currently overlaps.
+	HMONITOR hMon = MonitorFromWindow(hDlg, MONITOR_DEFAULTTONEAREST);
+	MONITORINFO mi = { sizeof(mi) };
+	RECT rcArea;
+	if (GetMonitorInfo(hMon, &mi))
+		rcArea = mi.rcWork;
+	else
+		SystemParametersInfo(SPI_GETWORKAREA, 0, &rcArea, 0);
+
+	int x = rcArea.left + ((rcArea.right - rcArea.left) - dlgW) / 2;
+	int y = rcArea.top + ((rcArea.bottom - rcArea.top) - dlgH) / 2;
+
+	SetWindowPos(hDlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 // ==============================================================================
@@ -1317,7 +1496,7 @@ void CustomSaveDialog::BuildCustomDropdowns()
 	};
 
 	// --- Compression (the main one, BC7 default) ---
-	RECT rcC = dluToPx(22, 48, 256, 14);
+	RECT rcC = dluToPx(16, 38, 268, 14);
 	m_ddCompression = std::make_unique<CustomDropdown>();
 	m_ddCompression->Create(hDlg, IDC_COMPRESSION_DROPDOWN,
 	                        rcC.left, rcC.top, rcC.right - rcC.left, 26, m_hUIFont);
@@ -1327,7 +1506,7 @@ void CustomSaveDialog::BuildCustomDropdowns()
 	m_ddCompression->SetOnChange([this](int idx) { OnCompressionDropdownChange(idx); });
 
 	// --- Error metric (BC1/BC3 dithering quality) ---
-	RECT rcE = dluToPx(78, 136, 150, 14);
+	RECT rcE = dluToPx(70, 97, 110, 14);
 	m_ddErrorMetric = std::make_unique<CustomDropdown>();
 	m_ddErrorMetric->Create(hDlg, IDC_ERRORMETRIC_DROPDOWN,
 	                        rcE.left, rcE.top, rcE.right - rcE.left, 26, m_hUIFont);
@@ -1339,7 +1518,7 @@ void CustomSaveDialog::BuildCustomDropdowns()
 	});
 
 	// --- Mipmap generation ---
-	RECT rcM = dluToPx(78, 170, 160, 14);
+	RECT rcM = dluToPx(70, 125, 110, 14);
 	m_ddMipmap = std::make_unique<CustomDropdown>();
 	m_ddMipmap->Create(hDlg, IDC_MIPMAP_DROPDOWN,
 	                   rcM.left, rcM.top, rcM.right - rcM.left, 26, m_hUIFont);
@@ -1381,9 +1560,15 @@ void CustomSaveDialog::UpdateQualityControlsState()
 	// Dithering + error metric only matter for BC1 / BC3.
 	bool qualityApplies = (type == CompressionTypeEnum::BC1 || type == CompressionTypeEnum::BC3);
 
-	EnableWindow(GetDlgItem(hDlg, IDC_DITHERING_CHECK), qualityApplies);
+	HWND hCheck = GetDlgItem(hDlg, IDC_DITHERING_CHECK);
+	EnableWindow(hCheck, qualityApplies);
 	EnableWindow(GetDlgItem(hDlg, IDC_ERRORMETRIC_LABEL), qualityApplies);
 	if (m_ddErrorMetric) m_ddErrorMetric->SetEnabled(qualityApplies);
+
+	// Force the owner-drawn checkbox + its label to repaint in the new
+	// enabled/disabled state (EnableWindow alone won't trigger WM_DRAWITEM here).
+	InvalidateRect(hCheck, NULL, TRUE);
+	InvalidateRect(GetDlgItem(hDlg, IDC_ERRORMETRIC_LABEL), NULL, TRUE);
 }
 
 // ==============================================================================
@@ -1476,10 +1661,6 @@ void CustomSaveDialog::HandleCommand(WPARAM wParam, LPARAM lParam)
 			OnPresetSave();
 			return;
 
-		case IDC_PREVIEW_BUTTON:
-			OnPreview();
-			return;
-
 		case IDOK:
 			OnOK();
 			EndDialog(hDlg, IDOK);
@@ -1532,25 +1713,6 @@ void CustomSaveDialog::OnOK()
 	// CRITICAL FIX: Sync dialog data to globals before compression
 	// Without this, dithering and other settings don't reach CompressToScratchImage()
 	FillGlobalStruct();
-}
-
-// ==============================================================================
-// OnPreview - Handle Preview button pressed
-// ==============================================================================
-void CustomSaveDialog::OnPreview()
-{
-	// Copy over UI to global struct for preview routine
-	FillGlobalStruct();
-
-	// Show previewUI (modal does not return until OK is pressed)
-	PreviewDialog dlg(plugin);
-	dlg.Modal();
-
-	// Copy any changes back into UI struct (preview can change compression)
-	GetGlobalStruct();
-
-	// Update UI from struct
-	SetUIFromData();
 }
 
 // ==============================================================================

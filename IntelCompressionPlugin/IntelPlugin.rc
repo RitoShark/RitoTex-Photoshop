@@ -28,34 +28,36 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 // Dialog
 //
 
-IDD_MAINDIALOG DIALOGEX 0, 0, 300, 224
+IDD_MAINDIALOG DIALOGEX 0, 0, 300, 192
 STYLE DS_SETFONT | WS_POPUP
 FONT 9, "Segoe UI", 400, 0, 0x0
 BEGIN
-    // NOTE: the custom title bar (top ~22px) is painted in WM_PAINT, and the
+    // NOTE: the custom title bar (top ~16 DLU) is painted in WM_PAINT, and the
     // three dropdowns (compression / error-metric / mipmap) are created at
     // runtime in BuildCustomDropdowns() at pixel coordinates — they are NOT
     // declared here. Coordinates below are DLU; runtime dropdowns use pixels.
+    //
+    // Layout grid: left margin 16 DLU, right margin 16 DLU (content 16..284),
+    // sections separated by ~26 DLU of vertical rhythm. Tight, no dead space.
 
     // --- Compression ---
-    LTEXT           "Compression Format",-1,12,30,150,9
-    // dropdown drawn at runtime: pixel (22,52) 200x26
-    LTEXT           "BC7: 8 bpp. Highest-quality color + alpha. Best overall choice.",IDC_COMPRESSION_HINT,22,84,266,18
+    LTEXT           "Compression Format",-1,16,26,150,9
+    // dropdown drawn at runtime: DLU (16,38) 268x14
+    LTEXT           "BC7: 8 bpp. Highest-quality color + alpha. Best overall choice.",IDC_COMPRESSION_HINT,16,58,268,9
 
     // --- Quality (BC1/BC3 only) ---
-    LTEXT           "Quality (BC1 / BC3 only)",-1,12,112,150,9
-    CONTROL         "Enable Dithering",IDC_DITHERING_CHECK,"Button",BS_OWNERDRAW | WS_TABSTOP,158,116,120,14
-    LTEXT           "Error Metric",IDC_ERRORMETRIC_LABEL,22,138,50,12
-    // error-metric dropdown drawn at runtime: pixel (78,132) 150x26
+    LTEXT           "Quality (BC1 / BC3 only)",-1,16,82,150,9
+    LTEXT           "Error Metric",IDC_ERRORMETRIC_LABEL,16,99,50,12
+    // error-metric dropdown drawn at runtime: DLU (70,97) 110x14
+    CONTROL         "Enable Dithering",IDC_DITHERING_CHECK,"Button",BS_OWNERDRAW | WS_TABSTOP,190,98,94,14
 
     // --- Mipmaps ---
-    LTEXT           "Mip Generation",-1,12,172,60,12
-    // mipmap dropdown drawn at runtime: pixel (110,176) 160x26
+    LTEXT           "Mip Generation",-1,16,127,60,12
+    // mipmap dropdown drawn at runtime: DLU (70,125) 110x14
 
-    // --- Action buttons (owner-drawn) ---
-    PUSHBUTTON      "Preview",IDC_PREVIEW_BUTTON,12,194,72,22,BS_OWNERDRAW
-    DEFPUSHBUTTON   "Export",IDOK,156,194,60,22,BS_OWNERDRAW
-    PUSHBUTTON      "Cancel",IDCANCEL,220,194,60,22,BS_OWNERDRAW
+    // --- Action buttons (owner-drawn, right-aligned symmetric pair) ---
+    DEFPUSHBUTTON   "Export",IDOK,148,158,64,24,BS_OWNERDRAW
+    PUSHBUTTON      "Cancel",IDCANCEL,220,158,64,24,BS_OWNERDRAW
 
     // Hidden controls kept for compatibility with existing code paths.
     COMBOBOX        IDC_PRESET_COMBO,0,0,0,0,CBS_DROPDOWNLIST | NOT WS_VISIBLE

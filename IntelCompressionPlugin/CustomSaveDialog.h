@@ -26,23 +26,32 @@
 #include <Windows.h>
 
 //-------------------------------------------------------------------------------
-// Dark Theme Color Palette
+// Host-adaptive Color Palette
+//
+// These are populated at runtime from Photoshop's interface colors (via the
+// Property suite, propInterfaceColor) so the dialog matches whatever UI theme
+// the user has selected — the dark themes AND the two light ones. If the host
+// query fails we fall back to the previous hard-coded dark values, so the
+// dialog always renders sanely. See CustomSaveDialog::InitHostTheme().
 //-------------------------------------------------------------------------------
 namespace DarkTheme {
-	constexpr COLORREF DIALOG_BG       = RGB(30, 30, 30);     // Main background
-	constexpr COLORREF TITLEBAR_BG     = RGB(24, 24, 24);     // Title bar (darker)
-	constexpr COLORREF TEXT_PRIMARY    = RGB(230, 230, 230);  // Light text
-	constexpr COLORREF TEXT_SECONDARY  = RGB(140, 140, 140);  // Gray text
-	constexpr COLORREF EDIT_BG         = RGB(38, 38, 38);     // Edit/combo control bg
-	constexpr COLORREF BUTTON_BG       = RGB(55, 55, 58);     // Button background
-	constexpr COLORREF BORDER          = RGB(70, 70, 74);     // Borders
-	constexpr COLORREF ACCENT          = RGB(0, 122, 204);    // Blue accent
-	constexpr COLORREF ACCENT_HOVER    = RGB(28, 151, 234);   // Blue accent hover
-	constexpr COLORREF CLOSE_HOVER     = RGB(196, 43, 28);    // Red close hover
-	constexpr COLORREF CHECK_BG        = RGB(38, 38, 38);     // Checkbox background
-	constexpr COLORREF CHECK_MARK      = RGB(0, 122, 204);    // Checkbox checkmark color
-	constexpr COLORREF COMBO_HIGHLIGHT = RGB(50, 50, 54);     // Combo hover item
-	constexpr COLORREF SEPARATOR       = RGB(50, 50, 54);     // Separator line
+	extern COLORREF DIALOG_BG;       // Main background
+	extern COLORREF TITLEBAR_BG;     // Title bar (slightly offset from bg)
+	extern COLORREF TEXT_PRIMARY;    // Primary text
+	extern COLORREF TEXT_SECONDARY;  // Dimmed / disabled text
+	extern COLORREF EDIT_BG;         // Edit / dropdown control bg
+	extern COLORREF BUTTON_BG;       // Neutral button background
+	extern COLORREF BORDER;          // Borders
+	extern COLORREF ACCENT;          // Accent (primary action / selection)
+	extern COLORREF ACCENT_HOVER;    // Accent hover
+	extern COLORREF CLOSE_HOVER;     // Red close-button hover (constant)
+	extern COLORREF CHECK_BG;        // Checkbox background
+	extern COLORREF CHECK_MARK;      // Checkbox checked fill
+	extern COLORREF COMBO_HIGHLIGHT; // Hovered dropdown item
+	extern COLORREF SEPARATOR;       // Separator line
+
+	// Populate the palette from the host's interface colors (idempotent).
+	void InitFromHost();
 }
 
 // Dialog data struct (copied from SaveOptionsDialog.h)
@@ -161,7 +170,6 @@ private:
 	void HandleCommand(WPARAM wParam, LPARAM lParam);
 	void OnOK();
 	void OnCancel();
-	void OnPreview();
 	void OnPresetSave();
 	void OnPresetDelete();
 	void OnComboChange(UINT controlID);
@@ -177,6 +185,7 @@ private:
 	void SetFontCompressionCombo();
 
 	// Custom drawing methods
+	void CenterDialog();
 	void DrawTitleBar(HDC hDC, const RECT& rcClient);
 	void DrawCustomCheckbox(LPDRAWITEMSTRUCT pDIS);
 	void DrawCustomComboItem(LPDRAWITEMSTRUCT pDIS);
