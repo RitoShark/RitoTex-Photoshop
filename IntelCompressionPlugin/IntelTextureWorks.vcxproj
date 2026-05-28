@@ -123,7 +123,7 @@
       <AdditionalIncludeDirectories>..\common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;winhttp.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
@@ -172,7 +172,7 @@ exit 1
       <AdditionalIncludeDirectories>..\common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;winhttp.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
@@ -205,7 +205,7 @@ exit 1
     <ClCompile>
       <AdditionalOptions>/MP /GS %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>.;..\3rdParty\Intel\Source;..\3rdParty\DirectXTex\DirectXTex;C:\Users\GuiSai\Desktop\adobe_photoshop_cs6_sdk_win\pluginsdk\PhotoshopAPI\Photoshop;C:\Users\GuiSai\Desktop\adobe_photoshop_cs6_sdk_win\pluginsdk\PhotoshopAPI\PICA_SP;C:\Users\GuiSai\Desktop\adobe_photoshop_cs6_sdk_win\pluginsdk\samplecode\common\includes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..\3rdParty\Intel\Source;..\3rdParty\DirectXTex\DirectXTex;$(PHOTOSHOP_SDK_CS6)\pluginsdk\PhotoshopAPI\Photoshop;$(PHOTOSHOP_SDK_CS6)\pluginsdk\PhotoshopAPI\PICA_SP;$(PHOTOSHOP_SDK_CS6)\pluginsdk\samplecode\common\includes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_ALLOW_KEYWORD_MACROS=1;ISOLATION_AWARE_ENABLED=1;_DEBUG;_CRT_SECURE_NO_DEPRECATE;_SCL_SECURE_NO_DEPRECATE;DEV_$(USERNAME);WIN32=1;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PrecompiledHeader>
@@ -225,7 +225,7 @@ exit 1
       <AdditionalIncludeDirectories>..\common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;winhttp.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -282,7 +282,7 @@ exit 1
       <AdditionalIncludeDirectories>..\common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>odbc32.lib;odbccp32.lib;version.lib;winhttp.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -317,6 +317,18 @@ exit 1
     <ClCompile Include="..\3rdParty\Intel\Source\ispc_texcomp.cpp" />
     <ClCompile Include="..\3rdParty\Intel\Source\win32Threads.cpp" />
     <ClCompile Include="s3tc.cpp" />
+    <ClCompile Include="TexFormat.cpp" />
+    <ClCompile Include="PixelConvert.cpp" />
+    <ClCompile Include="NormalMap.cpp" />
+    <ClCompile Include="CubeMap.cpp" />
+    <ClCompile Include="LayerOps.cpp" />
+    <ClCompile Include="Codec.cpp" />
+    <ClCompile Include="ContainerWrite.cpp" />
+    <ClCompile Include="Scripting.cpp" />
+    <ClCompile Include="Preview.cpp" />
+    <ClCompile Include="PhotoshopWrite.cpp" />
+    <ClCompile Include="PhotoshopRead.cpp" />
+    <ClCompile Include="UpdateChecker.cpp" />
     <ClCompile Include="SaveOptionsDialog.cpp" />
     <ClCompile Include="CustomSaveDialog.cpp" />
     <ClCompile Include="IntelPlugin.cpp" />
@@ -340,6 +352,8 @@ exit 1
     <ClInclude Include="IntelPluginName.h" />
     <ClInclude Include="..\3rdParty\Intel\Source\ispc_texcomp.h" />
     <ClInclude Include="s3tc.h" />
+    <ClInclude Include="TexFormat.h" />
+    <ClInclude Include="UpdateChecker.h" />
     <ClInclude Include="SaveOptionsDialog.h" />
     <ClInclude Include="CustomSaveDialog.h" />
     <ClInclude Include="..\3rdParty\Intel\Source\win32Threads.h" />

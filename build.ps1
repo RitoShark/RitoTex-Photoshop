@@ -12,14 +12,28 @@ Write-Host "      PATH refreshed" -ForegroundColor Green
 
 # 2. Set Photoshop SDK path
 Write-Host "`n[2/4] Setting up Photoshop SDK..." -ForegroundColor Yellow
-$sdkPath = "$PSScriptRoot\PhotoshopSDK"
+# The SDK lives one level up at <repo-root>\PhotoshopSDK, but allow an
+# in-folder copy or a pre-set env var to take precedence.
+$candidatePaths = @(
+    $env:PHOTOSHOP_SDK_CS6,
+    "$PSScriptRoot\PhotoshopSDK",
+    "$PSScriptRoot\..\PhotoshopSDK"
+)
 
-if (Test-Path $sdkPath) {
+$sdkPath = $null
+foreach ($candidate in $candidatePaths) {
+    if ($candidate -and (Test-Path (Join-Path $candidate "pluginsdk"))) {
+        $sdkPath = (Resolve-Path $candidate).Path
+        break
+    }
+}
+
+if ($sdkPath) {
     $env:PHOTOSHOP_SDK_CS6 = $sdkPath
     Write-Host "      PHOTOSHOP_SDK_CS6 = $sdkPath" -ForegroundColor Green
 } else {
-    Write-Host "      [ERROR] Photoshop SDK not found at: $sdkPath" -ForegroundColor Red
-    Write-Host "      Please ensure the SDK folder exists" -ForegroundColor Yellow
+    Write-Host "      [ERROR] Photoshop SDK (pluginsdk) not found in any of:" -ForegroundColor Red
+    $candidatePaths | Where-Object { $_ } | ForEach-Object { Write-Host "        $_" -ForegroundColor Yellow }
     exit 1
 }
 

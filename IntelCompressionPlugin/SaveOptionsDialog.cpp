@@ -199,6 +199,12 @@ void OptionsDialog::FillGlobalStruct()
 			case CompressionTypeEnum::BC3:
 				globalParams->encoding_g = DXGI_FORMAT_BC3_UNORM;
 				break;
+			case CompressionTypeEnum::BC5:
+				globalParams->encoding_g = DXGI_FORMAT_BC5_UNORM;
+				break;
+			case CompressionTypeEnum::BC7:
+				globalParams->encoding_g = DXGI_FORMAT_BC7_UNORM;
+				break;
 			case CompressionTypeEnum::UNCOMPRESSED:
 				globalParams->encoding_g = DXGI_FORMAT_R8G8B8A8_UNORM;
 				break;
@@ -235,6 +241,12 @@ void OptionsDialog::GetGlobalStruct()
 			break;
 		case DXGI_FORMAT_BC3_UNORM:
 			compressionID = CompressionTypeEnum::BC3;
+			break;
+		case DXGI_FORMAT_BC5_UNORM:
+			compressionID = CompressionTypeEnum::BC5;
+			break;
+		case DXGI_FORMAT_BC7_UNORM:
+			compressionID = CompressionTypeEnum::BC7;
 			break;
 		case DXGI_FORMAT_R8G8B8A8_UNORM:
 			compressionID = CompressionTypeEnum::UNCOMPRESSED;

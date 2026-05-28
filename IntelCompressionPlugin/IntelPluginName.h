@@ -24,6 +24,20 @@
 #define TEXExporterPluginName "RitoTex"
 #define TEXExporterPluginVersion " v2.0.0"
 
+// ---------------------------------------------------------------------------
+// Version — single source of truth. The update checker compares this against
+// the latest GitHub release tag. Keep these three numbers in sync with the
+// git release tag (e.g. tag "v2.0.0" -> 2,0,0).
+// ---------------------------------------------------------------------------
+#define RITOTEX_VERSION_MAJOR 2
+#define RITOTEX_VERSION_MINOR 0
+#define RITOTEX_VERSION_PATCH 0
+#define RITOTEX_VERSION_STR   "2.0.0"
+
+// GitHub repository the update checker queries (api.github.com/repos/<owner>/<repo>/releases/latest)
+#define RITOTEX_GITHUB_OWNER  "RitoShark"
+#define RITOTEX_GITHUB_REPO   "RitoTex-Photoshop"
+
 // Terminology specific to this plug-in.
 #define kPrompt				16100
 #define kCreatorAndType		kPrompt+1
