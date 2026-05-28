@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=40&duration=2800&pause=900&color=C8AA6E&center=true&vCenter=true&width=620&height=80&lines=RitoTex;Photoshop+%C3%97+League+of+Legends;.tex+textures%2C+natively" alt="RitoTex" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=34&duration=2800&pause=900&color=C8AA6E&center=true&vCenter=true&width=900&height=80&lines=RitoTex;Photoshop+%C3%97+League+of+Legends;.tex+textures%2C+natively" alt="RitoTex" />
 
 ### Open, edit, and save League of Legends `.tex` textures **directly in Adobe Photoshop**
 
