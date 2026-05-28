@@ -8,7 +8,7 @@
 
 <img src="https://img.shields.io/badge/version-2.0.0-C8AA6E?style=for-the-badge" alt="version" />
 <img src="https://img.shields.io/badge/platform-Windows%20x64-0A1428?style=for-the-badge&logo=windows&logoColor=white" alt="platform" />
-<img src="https://img.shields.io/badge/Photoshop-CS6%E2%80%93CC%202025-31A8FF?style=for-the-badge&logo=adobephotoshop&logoColor=white" alt="photoshop" />
+<img src="https://img.shields.io/badge/Photoshop-CS6%E2%80%93CC%202026-31A8FF?style=for-the-badge&logo=adobephotoshop&logoColor=white" alt="photoshop" />
 <img src="https://img.shields.io/badge/license-Apache%202.0-005A82?style=for-the-badge" alt="license" />
 
 <br/><br/>
