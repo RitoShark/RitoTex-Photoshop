@@ -15,8 +15,70 @@
 #include "s3tc.h"		// ISPC entry points: CompressImageMT/ST, CompressImageBC1/BC3, CompressionFunc
 
 #include <cstdio>
+#include <d3d11.h>			// GPU device for DirectXTex's DirectCompute BC7 encoder
+#include <wrl/client.h>		// Microsoft::WRL::ComPtr
+#include <mutex>
+
+#pragma comment(lib, "d3d11.lib")
 
 using namespace DirectX;
+
+//-------------------------------------------------------------------------------
+// GPU compression device (DirectXTex DirectCompute path, used for BC7).
+//
+// Created lazily on the first BC7 encode and cached for the rest of the session.
+// Hardware first, WARP (software) fallback so headless / no-GPU / RDP boxes still
+// get a working device; if even WARP fails the caller falls back to CPU Compress().
+//-------------------------------------------------------------------------------
+namespace
+{
+	Microsoft::WRL::ComPtr<ID3D11Device> g_compressDevice;
+	bool       g_deviceTried = false;   // only attempt creation once per session
+	std::mutex g_deviceMutex;           // compression may run off the main thread
+
+	void CreateCompressDevice(Microsoft::WRL::ComPtr<ID3D11Device>& device)
+	{
+		// Feature level 11_0 minimum — the BC7 encoder uses cs_5_0 compute shaders.
+		static const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
+
+		// Hardware first.
+		HRESULT hr = D3D11CreateDevice(
+			nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
+			levels, _countof(levels), D3D11_SDK_VERSION,
+			device.ReleaseAndGetAddressOf(), nullptr, nullptr);
+
+		if (FAILED(hr))
+		{
+			// WARP software rasterizer fallback (headless / no GPU / remote desktop).
+			hr = D3D11CreateDevice(
+				nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0,
+				levels, _countof(levels), D3D11_SDK_VERSION,
+				device.ReleaseAndGetAddressOf(), nullptr, nullptr);
+		}
+
+		if (FAILED(hr))
+		{
+			device.Reset();   // leave null → caller uses CPU Compress()
+			OutputDebugStringA("[RitoTex/Codec] GPU device creation failed (HW+WARP) — using CPU\n");
+		}
+		else
+		{
+			OutputDebugStringA("[RitoTex/Codec] GPU compress device ready\n");
+		}
+	}
+
+	// Returns the cached device (creating it on first call), or nullptr if unavailable.
+	ID3D11Device* GetCompressDevice()
+	{
+		std::lock_guard<std::mutex> lock(g_deviceMutex);
+		if (!g_deviceTried)
+		{
+			g_deviceTried = true;
+			CreateCompressDevice(g_compressDevice);
+		}
+		return g_compressDevice.Get();
+	}
+}
 
 //Take an Uncompressed ScratchImage scrUncompressedImageScratch_ and Compresses it into scrImageScratch_
 bool IntelPlugin::CompressToScratchImage(ScratchImage **scrImageScratch_, ScratchImage **scrUncompressedImageScratch_, bool hasAlpha_)
@@ -49,12 +111,48 @@ bool IntelPlugin::CompressToScratchImage(ScratchImage **scrImageScratch_, Scratc
 			// Release the output scratch image - Compress() initializes it internally
 			(*scrImageScratch_)->Release();
 
-			HRESULT hr = Compress(
-				(*scrUncompressedImageScratch_)->GetImages(),
-				(*scrUncompressedImageScratch_)->GetImageCount(),
-				(*scrUncompressedImageScratch_)->GetMetadata(),
-				ps.data->encoding_g, flags, 0.5f,
-				**scrImageScratch_);
+			// BC7 is the only format DirectXTex's GPU (DirectCompute) encoder supports
+			// that we emit, and it is by far the slowest on CPU — route it to the GPU.
+			// BC5 and dithered BC1/BC3 stay on the CPU path below.
+			const bool gpuEligible =
+				(ps.data->encoding_g == DXGI_FORMAT_BC7_UNORM ||
+				 ps.data->encoding_g == DXGI_FORMAT_BC7_UNORM_SRGB);
+
+			ID3D11Device* dev = gpuEligible ? GetCompressDevice() : nullptr;
+
+			HRESULT hr = E_FAIL;
+
+			if (dev)
+			{
+				// GPU encode. alphaWeight = 1.0f is the BC7 weight for this overload.
+				// Whole mip chain + cube faces are handled internally by DirectXTex.
+				// Serialize on the device mutex: the immediate context is not thread-safe.
+				std::lock_guard<std::mutex> lock(g_deviceMutex);
+				hr = Compress(
+					dev,
+					(*scrUncompressedImageScratch_)->GetImages(),
+					(*scrUncompressedImageScratch_)->GetImageCount(),
+					(*scrUncompressedImageScratch_)->GetMetadata(),
+					ps.data->encoding_g, flags, 1.0f,
+					**scrImageScratch_);
+
+				if (SUCCEEDED(hr))
+					OutputDebugStringA("[RitoTex/Codec] BC7 encoded on GPU\n");
+				else
+					OutputDebugStringA("[RitoTex/Codec] GPU BC7 encode failed — falling back to CPU\n");
+			}
+
+			// CPU path: the fallback for BC7 (no device / GPU failure) and the normal
+			// path for BC5 and dithered BC1/BC3. alphaRef = 0.5f (BC1 alpha cutoff).
+			if (!dev || FAILED(hr))
+			{
+				hr = Compress(
+					(*scrUncompressedImageScratch_)->GetImages(),
+					(*scrUncompressedImageScratch_)->GetImageCount(),
+					(*scrUncompressedImageScratch_)->GetMetadata(),
+					ps.data->encoding_g, flags, 0.5f,
+					**scrImageScratch_);
+			}
 
 			if (FAILED(hr))
 			{
