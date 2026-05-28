@@ -28,39 +28,41 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 // Dialog
 //
 
-IDD_MAINDIALOG DIALOGEX 0, 0, 360, 244
+IDD_MAINDIALOG DIALOGEX 0, 0, 300, 224
 STYLE DS_SETFONT | WS_POPUP
 FONT 9, "Segoe UI", 400, 0, 0x0
 BEGIN
-    // Custom title bar is painted in WM_PAINT (top 22 DLU reserved)
+    // NOTE: the custom title bar (top ~22px) is painted in WM_PAINT, and the
+    // three dropdowns (compression / error-metric / mipmap) are created at
+    // runtime in BuildCustomDropdowns() at pixel coordinates — they are NOT
+    // declared here. Coordinates below are DLU; runtime dropdowns use pixels.
 
-    // Compression Format Group (shifted down 18 DLU for custom title bar)
-    GROUPBOX        "Compression Format",-1,12,30,336,58
-    AUTORADIOBUTTON "BC3 (DXT5) - Compressed with Alpha",IDC_COMPRESSION_BC3,22,46,155,14,WS_GROUP | WS_TABSTOP
-    AUTORADIOBUTTON "BGRA - Uncompressed",IDC_COMPRESSION_BGRA,22,64,130,14
-    LTEXT           "BC3: 8 bits/pixel with full alpha. Best for most textures.",IDC_COMPRESSION_HINT,190,44,150,36
+    // --- Compression ---
+    LTEXT           "Compression Format",-1,12,30,150,9
+    // dropdown drawn at runtime: pixel (22,52) 200x26
+    LTEXT           "BC7: 8 bpp. Highest-quality color + alpha. Best overall choice.",IDC_COMPRESSION_HINT,22,84,266,18
 
-    // Quality Options (BC3 only)
-    GROUPBOX        "Quality Options (BC3 only)",-1,12,96,336,58
-    CONTROL         "Enable Dithering",IDC_DITHERING_CHECK,"Button",BS_OWNERDRAW | WS_TABSTOP,22,114,100,14
-    LTEXT           "Error Metric:",IDC_ERRORMETRIC_LABEL,22,134,50,12
-    COMBOBOX        IDC_ERRORMETRIC_COMBO,78,132,100,60,CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Dithering reduces banding artifacts.\nPerceptual metric = better visual quality.",-1,190,110,150,36
+    // --- Quality (BC1/BC3 only) ---
+    LTEXT           "Quality (BC1 / BC3 only)",-1,12,112,150,9
+    CONTROL         "Enable Dithering",IDC_DITHERING_CHECK,"Button",BS_OWNERDRAW | WS_TABSTOP,158,116,120,14
+    LTEXT           "Error Metric",IDC_ERRORMETRIC_LABEL,22,138,50,12
+    // error-metric dropdown drawn at runtime: pixel (78,132) 150x26
 
-    // Mipmap Options
-    GROUPBOX        "Mipmap Options",-1,12,162,336,40
-    LTEXT           "Mip Generation:",-1,22,178,60,12
-    COMBOBOX        IDC_MIPMAP_COMBO,88,176,160,80,CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    // --- Mipmaps ---
+    LTEXT           "Mip Generation",-1,12,172,60,12
+    // mipmap dropdown drawn at runtime: pixel (110,176) 160x26
 
-    // Action Buttons (owner-drawn for custom styling)
-    PUSHBUTTON      "Preview...",IDC_PREVIEW_BUTTON,12,214,80,22,BS_OWNERDRAW
-    DEFPUSHBUTTON   "Export",IDOK,210,214,65,22,BS_OWNERDRAW
-    PUSHBUTTON      "Cancel",IDCANCEL,280,214,65,22,BS_OWNERDRAW
+    // --- Action buttons (owner-drawn) ---
+    PUSHBUTTON      "Preview",IDC_PREVIEW_BUTTON,12,194,72,22,BS_OWNERDRAW
+    DEFPUSHBUTTON   "Export",IDOK,156,194,60,22,BS_OWNERDRAW
+    PUSHBUTTON      "Cancel",IDCANCEL,220,194,60,22,BS_OWNERDRAW
 
-    // Hidden controls for compatibility (not visible)
+    // Hidden controls kept for compatibility with existing code paths.
     COMBOBOX        IDC_PRESET_COMBO,0,0,0,0,CBS_DROPDOWNLIST | NOT WS_VISIBLE
     COMBOBOX        IDC_TEXTURETYPE_COMBO,0,0,0,0,CBS_DROPDOWNLIST | NOT WS_VISIBLE
     COMBOBOX        IDC_COMPRESSION_COMBO,0,0,0,0,CBS_DROPDOWNLIST | NOT WS_VISIBLE
+    COMBOBOX        IDC_MIPMAP_COMBO,0,0,0,0,CBS_DROPDOWNLIST | NOT WS_VISIBLE
+    COMBOBOX        IDC_ERRORMETRIC_COMBO,0,0,0,0,CBS_DROPDOWNLIST | NOT WS_VISIBLE
     CONTROL         "",IDC_CUBEMIPLEVEL_CHECK,"Button",BS_AUTOCHECKBOX | NOT WS_VISIBLE,0,0,0,0
     COMBOBOX        IDC_MIPLEVEL_COMBO,0,0,0,0,CBS_DROPDOWNLIST | NOT WS_VISIBLE
     CONTROL         "",IDC_NORMALIZE_CHECK,"Button",BS_AUTOCHECKBOX | NOT WS_VISIBLE,0,0,0,0

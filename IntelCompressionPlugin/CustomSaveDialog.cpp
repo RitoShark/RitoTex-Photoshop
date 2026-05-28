@@ -41,6 +41,28 @@ HBRUSH CustomSaveDialog::s_brushEditBg = nullptr;
 HPEN CustomSaveDialog::s_penBorder = nullptr;
 
 //-------------------------------------------------------------------------------
+// Compression formats shown in the custom dropdown (display order).
+// BC7 is the default / first entry. Selection index maps straight into this.
+//-------------------------------------------------------------------------------
+const CustomSaveDialog::CompressionFormat CustomSaveDialog::kCompressionFormats[] = {
+	{ "BC7  -  High Quality RGBA",   "BC7: 8 bpp. Highest-quality color + alpha. Best overall choice.",        DXGI_FORMAT_BC7_UNORM,     CompressionTypeEnum::BC7 },
+	{ "BC3  (DXT5)  -  RGBA",        "BC3 / DXT5: 8 bpp with full alpha. Fast, widely compatible.",            DXGI_FORMAT_BC3_UNORM,     CompressionTypeEnum::BC3 },
+	{ "BC1  (DXT1)  -  RGB",         "BC1 / DXT1: 4 bpp, no alpha. Smallest size for opaque textures.",        DXGI_FORMAT_BC1_UNORM,     CompressionTypeEnum::BC1 },
+	{ "BC5  -  Normal / 2-channel",  "BC5: 8 bpp two-channel (R+G). For tangent-space normal maps.",           DXGI_FORMAT_BC5_UNORM,     CompressionTypeEnum::BC5 },
+	{ "Uncompressed  (BGRA8)",       "BGRA8: 32 bpp lossless. Largest size, no compression artifacts.",        DXGI_FORMAT_B8G8R8A8_UNORM, CompressionTypeEnum::UNCOMPRESSED },
+};
+const int CustomSaveDialog::kCompressionFormatCount =
+	sizeof(CustomSaveDialog::kCompressionFormats) / sizeof(CustomSaveDialog::kCompressionFormats[0]);
+
+int CustomSaveDialog::EncodingToFormatIndex(DXGI_FORMAT enc) const
+{
+	for (int i = 0; i < kCompressionFormatCount; ++i)
+		if (kCompressionFormats[i].encoding == enc)
+			return i;
+	return 0; // default to BC7
+}
+
+//-------------------------------------------------------------------------------
 // Helper Type Definitions (from SaveOptionsDialog.cpp)
 //-------------------------------------------------------------------------------
 typedef vector<string>(*VStringFunc)(void);
@@ -771,22 +793,11 @@ bool CustomSaveDialog::LoadPresetNonUIMode(string nameOfPreset)
 // ==============================================================================
 void CustomSaveDialog::FillGlobalStruct()
 {
-	// Map CompressionTypeIndex directly to encoding.
-	// ExtractDataFromUI sets: 0 = BGRA (Uncompressed), 1 = BC3 (DXT5).
-	// We do NOT index into gComboItems here because that vector is dynamically
-	// filtered by texture type and its size may not match CompressionTypeIndex.
-	switch (mDialogData.CompressionTypeIndex)
-	{
-		case 0: // BGRA / Uncompressed
-			globalParams->encoding_g = DXGI_FORMAT_B8G8R8A8_UNORM;
-			break;
-		case 1: // BC3 / DXT5
-			globalParams->encoding_g = DXGI_FORMAT_BC3_UNORM;
-			break;
-		default:
-			globalParams->encoding_g = DXGI_FORMAT_BC3_UNORM;
-			break;
-	}
+	// CompressionTypeIndex indexes straight into kCompressionFormats.
+	if (mDialogData.CompressionTypeIndex < (uint32)kCompressionFormatCount)
+		globalParams->encoding_g = kCompressionFormats[mDialogData.CompressionTypeIndex].encoding;
+	else
+		globalParams->encoding_g = DXGI_FORMAT_BC7_UNORM; // default BC7
 
 	globalParams->TextureTypeIndex = mDialogData.TextureTypeIndex; //Col,Col+alpha,CubeFrmLayera,CubefromCross,NM
 	globalParams->MipMapTypeIndex = mDialogData.MipMapTypeIndex;  //None,Autogen,FromLayers
@@ -807,42 +818,9 @@ void CustomSaveDialog::FillGlobalStruct()
 // ==============================================================================
 void CustomSaveDialog::GetGlobalStruct()
 {
-	int CompressionTypeIndex = 0;
-	CompressionTypeEnum compressionID;
-
-	// Find compression ID
-	switch (globalParams->encoding_g)
-	{
-		case DXGI_FORMAT_BC1_UNORM:
-			compressionID = CompressionTypeEnum::BC1;
-			break;
-		case DXGI_FORMAT_BC3_UNORM:
-			compressionID = CompressionTypeEnum::BC3;
-			break;
-		case DXGI_FORMAT_R8G8B8A8_UNORM:
-			compressionID = CompressionTypeEnum::UNCOMPRESSED;
-			break;
-		default:
-			compressionID = CompressionTypeEnum::BC1;
-			break;
-	}
-
-	// Iteration over all available compression for this texture type and find the compression combobox index
-	// Compression types which are not available are not show in the combo box, therefore the index is not incremented if matrix is false
-	for (int i = 0; i < CompressionTypeEnum::COMPRESSION_TYPE_COUNT; i++)
-	{
-		// If this compression mode is available for this texture type
-		if (IntelPlugin::IsCombinationValid(globalParams->TextureTypeIndex, static_cast<CompressionTypeEnum>(i)))
-		{
-			// If its the selected encoding and this encoding is available then break out
-			if (i == compressionID)
-				break;
-
-			CompressionTypeIndex++;
-		}
-	}
-
-	mDialogData.CompressionTypeIndex = CompressionTypeIndex;
+	// CompressionTypeIndex indexes straight into kCompressionFormats now, so
+	// just map the encoding back to its row in that table.
+	mDialogData.CompressionTypeIndex = EncodingToFormatIndex(globalParams->encoding_g);
 	mDialogData.TextureTypeIndex = globalParams->TextureTypeIndex;  //Col,Col+alpha,CubeFrmLayera,CubefromCross,NM
 	mDialogData.MipMapTypeIndex = globalParams->MipMapTypeIndex;   //None,Autogen,FromLayers
 	mDialogData.MipLevel = globalParams->MipLevel;			// only valid if SetMipLevel == true
@@ -1261,13 +1239,9 @@ void CustomSaveDialog::Init(void)
 	// Without this, Windows draws radio/checkbox/groupbox text in theme
 	// colors (black) which is invisible on our dark background.
 	static const int themedControls[] = {
-		IDC_COMPRESSION_BC3,   // Radio button
-		IDC_COMPRESSION_BGRA,  // Radio button
-		IDC_DITHERING_CHECK,   // Checkbox
+		IDC_DITHERING_CHECK,   // Owner-drawn checkbox
 		IDC_COMPRESSION_HINT,  // Static text
 		IDC_ERRORMETRIC_LABEL, // Static text
-		IDC_ERRORMETRIC_COMBO, // Combo box
-		IDC_MIPMAP_COMBO,      // Combo box
 	};
 	for (int id : themedControls)
 	{
@@ -1311,37 +1285,87 @@ void CustomSaveDialog::Init(void)
 	// Force Color+Alpha as texture type (index 1 = Color+Alpha)
 	mDialogData.TextureTypeIndex = COLOR_ALPHA;
 
-	// Force BC3 as default compression (index 1 = BC3 in our simplified list)
-	// BC3 = DXGI_FORMAT_BC3_UNORM, BGRA = DXGI_FORMAT_B8G8R8A8_UNORM
-	mDialogData.CompressionTypeIndex = 1; // BC3
+	// BC7 is the default compression (index 0 in kCompressionFormats).
+	mDialogData.CompressionTypeIndex = 0; // BC7
 
-	// Set compression radio buttons - BC3 selected by default
-	SendDlgItemMessage(hDlg, IDC_COMPRESSION_BC3, BM_SETCHECK, BST_CHECKED, 0);
-	SendDlgItemMessage(hDlg, IDC_COMPRESSION_BGRA, BM_SETCHECK, BST_UNCHECKED, 0);
-
-	// Update compression hint text
-	SetDlgItemTextA(hDlg, IDC_COMPRESSION_HINT,
-		"BC3: 8 bits/pixel with full alpha. Best for most textures.");
-
-	// Initialize mipmap combo
-	SendDlgItemMessage(hDlg, IDC_MIPMAP_COMBO, CB_RESETCONTENT, 0, 0);
-	SendDlgItemMessage(hDlg, IDC_MIPMAP_COMBO, CB_ADDSTRING, 0, (LPARAM)"None");
-	SendDlgItemMessage(hDlg, IDC_MIPMAP_COMBO, CB_ADDSTRING, 0, (LPARAM)"Auto Generate");
-	SendDlgItemMessage(hDlg, IDC_MIPMAP_COMBO, CB_SETCURSEL, mDialogData.MipMapTypeIndex, 0);
-
-	// Set dithering checkbox (enabled by default for better quality)
+	// Dithering on by default (only affects BC1/BC3).
 	mDialogData.UseDithering = true;
 	m_ditheringChecked = true;
-	InvalidateRect(GetDlgItem(hDlg, IDC_DITHERING_CHECK), NULL, FALSE);
-
-	// Initialize error metric combo (Perceptual is default - better quality)
-	SendDlgItemMessage(hDlg, IDC_ERRORMETRIC_COMBO, CB_RESETCONTENT, 0, 0);
-	SendDlgItemMessage(hDlg, IDC_ERRORMETRIC_COMBO, CB_ADDSTRING, 0, (LPARAM)"Perceptual (Better Quality)");
-	SendDlgItemMessage(hDlg, IDC_ERRORMETRIC_COMBO, CB_ADDSTRING, 0, (LPARAM)"Uniform");
-	SendDlgItemMessage(hDlg, IDC_ERRORMETRIC_COMBO, CB_SETCURSEL, 0, 0);
 	mDialogData.UseUniformMetric = false;
 
-	// Enable/disable quality options based on compression format
+	// Build the fully custom dropdowns (compression / mipmap / error metric).
+	BuildCustomDropdowns();
+
+	// Initial hint + quality-control state for the default (BC7).
+	SetDlgItemTextA(hDlg, IDC_COMPRESSION_HINT, kCompressionFormats[0].hint);
+	InvalidateRect(GetDlgItem(hDlg, IDC_DITHERING_CHECK), NULL, FALSE);
+	UpdateQualityControlsState();
+}
+
+// ==============================================================================
+// BuildCustomDropdowns - Create + populate the fully custom dropdowns
+// ==============================================================================
+void CustomSaveDialog::BuildCustomDropdowns()
+{
+	// The dropdowns are real child windows positioned in PIXELS, but the rest of
+	// the dialog is laid out in DLU. Convert DLU → pixels via MapDialogRect so
+	// everything lines up regardless of DPI / font metrics.
+	auto dluToPx = [this](int x, int y, int w, int h) -> RECT {
+		RECT rc = { x, y, x + w, y + h };
+		MapDialogRect(hDlg, &rc);
+		return rc;
+	};
+
+	// --- Compression (the main one, BC7 default) ---
+	RECT rcC = dluToPx(22, 48, 256, 14);
+	m_ddCompression = std::make_unique<CustomDropdown>();
+	m_ddCompression->Create(hDlg, IDC_COMPRESSION_DROPDOWN,
+	                        rcC.left, rcC.top, rcC.right - rcC.left, 26, m_hUIFont);
+	for (int i = 0; i < kCompressionFormatCount; ++i)
+		m_ddCompression->AddItem(kCompressionFormats[i].label, kCompressionFormats[i].hint, i);
+	m_ddCompression->SetSelected(0); // BC7
+	m_ddCompression->SetOnChange([this](int idx) { OnCompressionDropdownChange(idx); });
+
+	// --- Error metric (BC1/BC3 dithering quality) ---
+	RECT rcE = dluToPx(78, 136, 150, 14);
+	m_ddErrorMetric = std::make_unique<CustomDropdown>();
+	m_ddErrorMetric->Create(hDlg, IDC_ERRORMETRIC_DROPDOWN,
+	                        rcE.left, rcE.top, rcE.right - rcE.left, 26, m_hUIFont);
+	m_ddErrorMetric->AddItem("Perceptual", "Luma-weighted error metric (better visual quality).");
+	m_ddErrorMetric->AddItem("Uniform", "Uniform error metric.");
+	m_ddErrorMetric->SetSelected(0);
+	m_ddErrorMetric->SetOnChange([this](int idx) {
+		mDialogData.UseUniformMetric = (idx == 1);
+	});
+
+	// --- Mipmap generation ---
+	RECT rcM = dluToPx(78, 170, 160, 14);
+	m_ddMipmap = std::make_unique<CustomDropdown>();
+	m_ddMipmap->Create(hDlg, IDC_MIPMAP_DROPDOWN,
+	                   rcM.left, rcM.top, rcM.right - rcM.left, 26, m_hUIFont);
+	m_ddMipmap->AddItem("None", "No mip maps.");
+	m_ddMipmap->AddItem("Auto Generate", "Auto-generate the full mip chain.");
+	m_ddMipmap->AddItem("From Layers", "Build the mip chain from document layers.");
+	m_ddMipmap->SetSelected(mDialogData.MipMapTypeIndex);
+	m_ddMipmap->SetOnChange([this](int idx) {
+		mDialogData.MipMapTypeIndex = static_cast<MipmapEnum>(idx);
+	});
+}
+
+// ==============================================================================
+// OnCompressionDropdownChange - React to a new compression format pick
+// ==============================================================================
+void CustomSaveDialog::OnCompressionDropdownChange(int idx)
+{
+	if (idx < 0 || idx >= kCompressionFormatCount)
+		idx = 0;
+
+	mDialogData.CompressionTypeIndex = idx;
+
+	// Update the hint line under the dropdown
+	SetDlgItemTextA(hDlg, IDC_COMPRESSION_HINT, kCompressionFormats[idx].hint);
+
+	// Dithering / error-metric only apply to the BC1 / BC3 low-precision paths.
 	UpdateQualityControlsState();
 }
 
@@ -1350,25 +1374,16 @@ void CustomSaveDialog::Init(void)
 // ==============================================================================
 void CustomSaveDialog::UpdateQualityControlsState()
 {
-	// Check if BC3 is selected
-	bool isBC3 = (SendDlgItemMessage(hDlg, IDC_COMPRESSION_BC3, BM_GETCHECK, 0, 0) == BST_CHECKED);
+	int idx = m_ddCompression ? m_ddCompression->GetSelected() : 0;
+	CompressionTypeEnum type = (idx >= 0 && idx < kCompressionFormatCount)
+		? kCompressionFormats[idx].type : CompressionTypeEnum::BC7;
 
-	// Enable/disable quality controls
-	EnableWindow(GetDlgItem(hDlg, IDC_DITHERING_CHECK), isBC3);
-	EnableWindow(GetDlgItem(hDlg, IDC_ERRORMETRIC_LABEL), isBC3);
-	EnableWindow(GetDlgItem(hDlg, IDC_ERRORMETRIC_COMBO), isBC3);
+	// Dithering + error metric only matter for BC1 / BC3.
+	bool qualityApplies = (type == CompressionTypeEnum::BC1 || type == CompressionTypeEnum::BC3);
 
-	// Update hint text based on selection
-	if (isBC3)
-	{
-		SetDlgItemTextA(hDlg, IDC_COMPRESSION_HINT,
-			"BC3: 8 bits/pixel with full alpha. Best for most textures.");
-	}
-	else
-	{
-		SetDlgItemTextA(hDlg, IDC_COMPRESSION_HINT,
-			"BGRA: Lossless, no compression. Larger file size but highest quality.");
-	}
+	EnableWindow(GetDlgItem(hDlg, IDC_DITHERING_CHECK), qualityApplies);
+	EnableWindow(GetDlgItem(hDlg, IDC_ERRORMETRIC_LABEL), qualityApplies);
+	if (m_ddErrorMetric) m_ddErrorMetric->SetEnabled(qualityApplies);
 }
 
 // ==============================================================================
@@ -1376,60 +1391,27 @@ void CustomSaveDialog::UpdateQualityControlsState()
 // ==============================================================================
 void CustomSaveDialog::SetUIFromData()
 {
-	// Change entries in compression/mipmap combo based on texture type
-	UpdateCompressionCombo();
-	UpdateMipMapCombo();
-
-	// Initialize compression combo from mDialogData.CompressionTypeIndex
-	SendDlgItemMessage(hDlg, IDC_COMPRESSION_COMBO, CB_SETCURSEL, mDialogData.CompressionTypeIndex, 0);
-	// Update context string based on selected entry
-	SetContextString(IDC_COMPRESSION_HINT, IDC_COMPRESSION_COMBO);
-
-	// Initialize texture type combo from mDialogData.TextureTypeIndex
-	SendDlgItemMessage(hDlg, IDC_TEXTURETYPE_COMBO, CB_SETCURSEL, mDialogData.TextureTypeIndex, 0);
-	// Update context string based on selected entry
-	SetContextString(IDC_TEXTURETYPE_HINT, IDC_TEXTURETYPE_COMBO);
-
-	// Initialize mip map creation combo from mDialogData.MipMapTypeIndex
-	SendDlgItemMessage(hDlg, IDC_MIPMAP_COMBO, CB_SETCURSEL, mDialogData.MipMapTypeIndex, 0);
-	// Update context string based on selected entry
-	SetContextString(IDC_MIPMAPS_HINT, IDC_MIPMAP_COMBO);
-
-	// Handle mip level checkbox
-	bool wasMipLevelChecked = (SendDlgItemMessage(hDlg, IDC_CUBEMIPLEVEL_CHECK, BM_GETCHECK, 0, 0) == BST_CHECKED);
-	SendDlgItemMessage(hDlg, IDC_CUBEMIPLEVEL_CHECK, BM_SETCHECK, mDialogData.SetMipLevel ? BST_CHECKED : BST_UNCHECKED, 0);
-
-	if (wasMipLevelChecked && !mDialogData.SetMipLevel)
+	// Sync the custom dropdowns from mDialogData (preset load / preview return).
+	if (m_ddCompression)
 	{
-		SendDlgItemMessage(hDlg, IDC_MIPLEVEL_COMBO, CB_RESETCONTENT, 0, 0);
-	}
-	else if (!wasMipLevelChecked && mDialogData.SetMipLevel)
-	{
-		PopulateMipLevelsCombo();
-	}
-	else if (wasMipLevelChecked && mDialogData.SetMipLevel)
-	{
-		SendDlgItemMessage(hDlg, IDC_MIPLEVEL_COMBO, CB_SETCURSEL, mDialogData.MipLevel, 0);
+		int idx = (mDialogData.CompressionTypeIndex < (uint32)kCompressionFormatCount)
+			? (int)mDialogData.CompressionTypeIndex : 0;
+		m_ddCompression->SetSelected(idx);
+		SetDlgItemTextA(hDlg, IDC_COMPRESSION_HINT, kCompressionFormats[idx].hint);
 	}
 
-	// Set normalize checkbox
-	SendDlgItemMessage(hDlg, IDC_NORMALIZE_CHECK, BM_SETCHECK, mDialogData.Normalize ? BST_CHECKED : BST_UNCHECKED, 0);
+	if (m_ddMipmap)
+		m_ddMipmap->SetSelected(mDialogData.MipMapTypeIndex);
 
-	// Set flip X checkbox
-	SendDlgItemMessage(hDlg, IDC_FLIPX_CHECK, BM_SETCHECK, mDialogData.FlipX ? BST_CHECKED : BST_UNCHECKED, 0);
+	if (m_ddErrorMetric)
+		m_ddErrorMetric->SetSelected(mDialogData.UseUniformMetric ? 1 : 0);
 
-	// Set flip Y checkbox
-	SendDlgItemMessage(hDlg, IDC_FLIPY_CHECK, BM_SETCHECK, mDialogData.FlipY ? BST_CHECKED : BST_UNCHECKED, 0);
-
-	// Set dithering checkbox (owner-drawn, use member variable)
+	// Dithering checkbox (owner-drawn, use member variable)
 	m_ditheringChecked = mDialogData.UseDithering;
 	InvalidateRect(GetDlgItem(hDlg, IDC_DITHERING_CHECK), NULL, FALSE);
 
-	// Set error metric combo
-	SendDlgItemMessage(hDlg, IDC_ERRORMETRIC_COMBO, CB_SETCURSEL, mDialogData.UseUniformMetric ? 1 : 0, 0);
-
-	// Disable any controls they do not apply based on the chosen texture type
-	DisableUnavailableControls();
+	// Enable/disable the quality controls based on the chosen format.
+	UpdateQualityControlsState();
 }
 
 // ==============================================================================
@@ -1468,30 +1450,17 @@ void CustomSaveDialog::HandleCommand(WPARAM wParam, LPARAM lParam)
 	// Handle specific controls
 	switch (controlID)
 	{
-		case IDC_COMPRESSION_BC3:
-		case IDC_COMPRESSION_BGRA:
-			// Radio button changed - update UI state
-			UpdateQualityControlsState();
+		// Custom dropdowns post a legacy WM_COMMAND too; the real work happens
+		// in their OnChange callbacks. Just refresh mDialogData here.
+		case IDC_COMPRESSION_DROPDOWN:
+		case IDC_MIPMAP_DROPDOWN:
+		case IDC_ERRORMETRIC_DROPDOWN:
 			ExtractDataFromUI(mDialogData);
-			break;
+			return;
 
 		case IDC_DITHERING_CHECK:
-			// Dithering checkbox changed
+			// Dithering checkbox changed (owner-drawn toggle handled in WindowProc)
 			ExtractDataFromUI(mDialogData);
-			break;
-
-		case IDC_ERRORMETRIC_COMBO:
-			if (notifyCode == CBN_SELCHANGE)
-				ExtractDataFromUI(mDialogData);
-			break;
-
-		case IDC_MIPMAP_COMBO:
-			if (notifyCode == CBN_SELCHANGE)
-				ExtractDataFromUI(mDialogData);
-			break;
-
-		case IDC_CUBEMIPLEVEL_CHECK:
-			OnCubeMipLevelCheck();
 			break;
 
 		case IDC_PRESET_COMBO:
@@ -1524,21 +1493,8 @@ void CustomSaveDialog::HandleCommand(WPARAM wParam, LPARAM lParam)
 			break;
 	}
 
-	// Some other changes happened to the UI which did not have custom actions just update the struct
-	auto old = mDialogData;
+	// Some other change happened to the UI which had no custom action — refresh the struct.
 	ExtractDataFromUI(mDialogData);
-
-	// Rebuild CompressionTypes Combo box and disable not applicable controls
-	// If Texture or MipMap type changed (apply last to have mDialog updated)
-	if (old.TextureTypeIndex != mDialogData.TextureTypeIndex || old.MipMapTypeIndex != mDialogData.MipMapTypeIndex)
-	{
-		// Update compression/mipmap combo box
-		UpdateCompressionCombo();
-		UpdateMipMapCombo();
-
-		// Disable any controls they do not apply based on the chosen texture type
-		DisableUnavailableControls();
-	}
 }
 
 // ==============================================================================
@@ -1720,23 +1676,20 @@ void CustomSaveDialog::OnPresetComboChange()
 // ==============================================================================
 void CustomSaveDialog::ExtractDataFromUI(DialogData& dd)
 {
-	// Read compression format from radio buttons
-	bool isBGRA = (SendDlgItemMessage(hDlg, IDC_COMPRESSION_BGRA, BM_GETCHECK, 0, 0) == BST_CHECKED);
-
-	// Map to compression index:
-	// 0 = Uncompressed (BGRA8) = DXGI_FORMAT_B8G8R8A8_UNORM
-	// 1 = BC3 (DXT5) = DXGI_FORMAT_BC3_UNORM
-	dd.CompressionTypeIndex = isBGRA ? 0 : 1;
+	// Compression: index straight into kCompressionFormats (BC7=0, BC3=1, ...).
+	dd.CompressionTypeIndex = m_ddCompression ? m_ddCompression->GetSelected() : 0;
 
 	// Always Color+Alpha texture type
 	dd.TextureTypeIndex = COLOR_ALPHA;
 
-	// Read mipmap generation method
-	dd.MipMapTypeIndex = static_cast<MipmapEnum>(GetSelectedItem(IDC_MIPMAP_COMBO));
+	// Mipmap generation method
+	dd.MipMapTypeIndex = m_ddMipmap
+		? static_cast<MipmapEnum>(m_ddMipmap->GetSelected())
+		: MipmapEnum::NONE;
 
-	// Read quality settings (only apply to BC3) - dithering checkbox is owner-drawn
+	// Quality settings (only apply to BC1/BC3) - dithering checkbox is owner-drawn
 	dd.UseDithering = m_ditheringChecked;
-	dd.UseUniformMetric = (GetSelectedItem(IDC_ERRORMETRIC_COMBO) == 1);
+	dd.UseUniformMetric = m_ddErrorMetric ? (m_ddErrorMetric->GetSelected() == 1) : false;
 
 	// Default values for hidden/removed controls
 	dd.SetMipLevel = false;

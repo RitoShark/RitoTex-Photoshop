@@ -60,6 +60,9 @@
 #define IDC_ERRORMETRIC_LABEL           1013
 #define IDC_COMPRESSION_BC3             1014
 #define IDC_COMPRESSION_BGRA            1015
+#define IDC_COMPRESSION_DROPDOWN        1016
+#define IDC_MIPMAP_DROPDOWN             1017
+#define IDC_ERRORMETRIC_DROPDOWN        1018
 #define IDD_MAINDIALOG                  16001
 #define IDD_ABOUT                       28950
 

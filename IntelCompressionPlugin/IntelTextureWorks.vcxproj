@@ -328,6 +328,7 @@ exit 1
     <ClCompile Include="Preview.cpp" />
     <ClCompile Include="PhotoshopWrite.cpp" />
     <ClCompile Include="PhotoshopRead.cpp" />
+    <ClCompile Include="CustomDropdown.cpp" />
     <ClCompile Include="UpdateChecker.cpp" />
     <ClCompile Include="SaveOptionsDialog.cpp" />
     <ClCompile Include="CustomSaveDialog.cpp" />

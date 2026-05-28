@@ -18,9 +18,11 @@
 #pragma once
 
 #include "IntelPlugin.h"
+#include "CustomDropdown.h"
 #include <vector>
 #include <map>
 #include <string>
+#include <memory>
 #include <Windows.h>
 
 //-------------------------------------------------------------------------------
@@ -99,6 +101,27 @@ private:
 	bool m_ditheringChecked; // Checkbox state (since we owner-draw it)
 	HFONT m_hTitleFont;      // Bold font for title bar
 	HFONT m_hUIFont;         // Regular font for controls
+
+	// Fully custom dropdowns (no Win32 combo chrome)
+	std::unique_ptr<CustomDropdown> m_ddCompression;
+	std::unique_ptr<CustomDropdown> m_ddMipmap;
+	std::unique_ptr<CustomDropdown> m_ddErrorMetric;
+
+	// Compression formats shown in the dropdown, in display order.
+	// Index into this table is what the dropdown selection returns.
+	struct CompressionFormat
+	{
+		const char* label;        // shown in the dropdown
+		const char* hint;         // hint line under the dropdown
+		DXGI_FORMAT encoding;     // what we hand the codec
+		CompressionTypeEnum type; // for IsCombinationValid checks
+	};
+	static const CompressionFormat kCompressionFormats[];
+	static const int kCompressionFormatCount;
+
+	void BuildCustomDropdowns();              // create + populate the 3 dropdowns
+	void OnCompressionDropdownChange(int idx);
+	int  EncodingToFormatIndex(DXGI_FORMAT enc) const;
 
 	// Combo box data structures (REUSE from SaveOptionsDialog)
 	struct ComboItemAndContext
