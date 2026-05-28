@@ -118,7 +118,17 @@ LRESULT CALLBACK CustomDropdown::ClosedProc(HWND hwnd, UINT msg, WPARAM wParam, 
 			return 1;   // we paint everything in WM_PAINT
 
 		case WM_LBUTTONDOWN:
+			// IMPORTANT: do NOT open the popup here. Opening on button-DOWN was the
+			// cause of the "flicker open then instantly close" bug: OpenPopup() calls
+			// SetCapture(popup), so the matching WM_LBUTTONUP for this very click is
+			// delivered to the popup at the closed-box location (outside the popup's
+			// client rect), which the popup treated as an outside-click dismiss.
+			// Toggling on button-UP keeps the whole down/up pair on the closed
+			// control, so the popup never sees a stray up. Just take focus here.
 			SetFocus(hwnd);
+			return 0;
+
+		case WM_LBUTTONUP:
 			if (self->m_enabled)
 			{
 				if (self->m_hPopup)
@@ -252,6 +262,12 @@ void CustomDropdown::OpenPopup()
 
 	SetWindowLongPtr(m_hPopup, GWLP_USERDATA, (LONG_PTR)this);
 	ShowWindow(m_hPopup, SW_SHOWNOACTIVATE);
+
+	// Belt-and-suspenders: even though we now open on the closed control's
+	// WM_LBUTTONUP, swallow one stray outside LBUTTONUP that may still be
+	// delivered to the popup right after it grabs capture (e.g. synthetic ups
+	// or keyboard-triggered opens). This is cleared as soon as it's consumed.
+	m_swallowFirstUp = true;
 	SetCapture(m_hPopup);   // capture so clicks outside close the popup
 	InvalidateRect(m_hwnd, nullptr, FALSE);   // redraw closed (open state)
 }
@@ -263,6 +279,7 @@ void CustomDropdown::ClosePopup()
 	DestroyWindow(m_hPopup);
 	m_hPopup = nullptr;
 	m_hover = -1;
+	m_swallowFirstUp = false;
 	if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -332,7 +349,22 @@ LRESULT CALLBACK CustomDropdown::PopupProc(HWND hwnd, UINT msg, WPARAM wParam, L
 		{
 			POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
 			RECT rc; GetClientRect(hwnd, &rc);
-			if (pt.x < 0 || pt.y < 0 || pt.x >= rc.right || pt.y >= rc.bottom)
+			bool outside = (pt.x < 0 || pt.y < 0 || pt.x >= rc.right || pt.y >= rc.bottom);
+
+			// Swallow the single stray LBUTTONUP that can arrive immediately after
+			// the popup grabs capture (it carries the closed box's coords, i.e.
+			// outside). Don't let it dismiss the freshly-opened popup.
+			if (msg == WM_LBUTTONUP && self->m_swallowFirstUp)
+			{
+				self->m_swallowFirstUp = false;
+				if (outside)
+					return 0;   // ignore this one; keep popup open
+			}
+			// Any genuine button-DOWN means the user has interacted; stop swallowing.
+			if (msg == WM_LBUTTONDOWN)
+				self->m_swallowFirstUp = false;
+
+			if (outside)
 			{
 				// Click outside the popup → dismiss without changing selection.
 				self->ClosePopup();

@@ -80,6 +80,7 @@ private:
 	int    m_id       = 0;
 	int    m_selected = 0;
 	int    m_hover    = -1;        // hovered row in popup, -1 = none
+	bool   m_swallowFirstUp = false; // ignore one stray LBUTTONUP right after opening
 	bool   m_enabled  = true;
 	bool   m_pressed  = false;     // closed box pressed/open state (for chevron + border accent)
 
