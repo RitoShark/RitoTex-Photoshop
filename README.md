@@ -73,7 +73,7 @@ No exporting. No converting. No round-tripping through `.dds`. It also reads and
 1. **Grab** `RitoTex.8bi` from the [**Releases**](https://github.com/RitoShark/RitoTex-Photoshop/releases) page (or build it yourself — see below).
 2. **Drop it in** your Photoshop File Formats folder:
    ```
-   C:\Program Files\Adobe\Adobe Photoshop <version>\Plug-ins\File Formats\
+   C:\Program Files\Adobe\Adobe Photoshop [version]\Required\Plug-ins\File Formats
    ```
 3. **Restart Photoshop.**
 
