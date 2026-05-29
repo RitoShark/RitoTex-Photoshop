@@ -35,7 +35,7 @@ typedef struct {
 	uint8_t    magic[4];      // "TEX\0"
 	uint16_t   image_width;
 	uint16_t   image_height;
-	uint8_t    unk1;          // reserved (written 0)
+	uint8_t    unk1;          // reserved (Riot/Paint.NET write 1)
 	tex_format tex_format;
 	uint8_t    unk2;          // reserved (written 0)
 	bool       has_mipmaps;

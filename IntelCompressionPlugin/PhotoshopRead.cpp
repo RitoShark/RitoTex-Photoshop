@@ -17,6 +17,7 @@
 #include "s3tc.h"					// BlockDecompressImageDXT1 / DXT5
 
 #include <memory>
+#include <cmath>
 
 using namespace DirectX;
 
@@ -99,7 +100,9 @@ void IntelPlugin::DoReadStart()
 		UINT stride = width * 4;
 		UINT imageSize = stride * height;
 
-		uint32 blockSize = (header->tex_format == tex_format_dxt5) ? 16 : 8;
+		// Bytes per 4x4 block: BC1=8, BC3/BC5/BC7=16. TexBlockBytes() is the single
+		// source of truth (used to land on the correct base-image offset for mipped files).
+		uint32 blockSize = TexBlockBytes(header->tex_format);
 		uint32 blockWidth = (header->image_width + 3) / 4;
 		uint32 blockHeight = (header->image_height + 3) / 4;
 		int32 readCount = blockWidth * blockHeight * blockSize;
@@ -118,8 +121,8 @@ void IntelPlugin::DoReadStart()
 			unsigned int mipMapCount = get_num_mipmaps(header->image_width, header->image_height);
 
 			UINT skip = 0;
-			// block_size = 4 for dxt5 and dxt1
-			// Note (+ block_size - 1) simplified to +3 bcs 4 - 1
+			// Skip every mip above the base (smallest..level 1) to land on mip 0.
+			// blockSize is the real bytes-per-block for this format (BC1=8, others=16).
 			for (auto x = mipMapCount; x > 0; x--) {
 				auto curr_width = max(header->image_width / (1 << x), 1);
 				auto curr_height = max(header->image_height / (1 << x), 1);
@@ -408,19 +411,14 @@ void IntelPlugin::DoReadContinue()
 	if (texLoadInfo.isLoadingTex) {
 		texLoadInfo.currentLayer++;
 
-		const UINT blockSize = texLoadInfo.header->tex_format == tex_format_dxt5 ? 16 : 8;
-		const UINT blockWidth = (texLoadInfo.header->image_width + 3) / 4;
-		const UINT blockHeight = (texLoadInfo.header->image_height + 3) / 4;
+		const UINT imgWidth  = texLoadInfo.header->image_width;
+		const UINT imgHeight = texLoadInfo.header->image_height;
+		const UINT blockSize = TexBlockBytes(texLoadInfo.header->tex_format);
+		const UINT blockWidth = (imgWidth + 3) / 4;
+		const UINT blockHeight = (imgHeight + 3) / 4;
 		const UINT dataSize = blockWidth * blockHeight * blockSize;
-		const UINT stride = texLoadInfo.header->image_width * 4;
-
-		auto imageData = std::make_unique<unsigned long[]>(stride * texLoadInfo.header->image_height);
-		if (!imageData)
-		{
-			errorMessage("Failed to allocate decompression buffer", "TEX Load Error");
-			SetResult(memFullErr);
-			return;
-		}
+		const UINT stride = imgWidth * 4;
+		uint32 bufferSize = stride * imgHeight;
 
 		if (!texLoadInfo.pixelData) {
 			errorMessage("Invalid pixel data pointer", "TEX Load Error");
@@ -428,40 +426,80 @@ void IntelPlugin::DoReadContinue()
 			return;
 		}
 
-
-		if (texLoadInfo.header->tex_format == tex_format_dxt5) {
-			BlockDecompressImageDXT5(texLoadInfo.header->image_width, texLoadInfo.header->image_height, texLoadInfo.pixelData.get(), imageData.get());
-		}
-		else if (texLoadInfo.header->tex_format == tex_format_dxt1) {
-			BlockDecompressImageDXT1(texLoadInfo.header->image_width, texLoadInfo.header->image_height, texLoadInfo.pixelData.get(), imageData.get());
-		} // No need for decompress rgba8
-
-		auto finalImage = std::make_unique<unsigned long[]>(stride * texLoadInfo.header->image_height);
-		if (!finalImage)
+		// Decompressed RGBA8 destination (interleaved R,G,B,A — matches the byte
+		// order Photoshop expects below and in the DDS path).
+		auto rgbaImage = std::make_unique<uint8[]>(bufferSize);
+		if (!rgbaImage)
 		{
-			errorMessage("Failed to allocate final image buffer", "TEX Load Error");
+			errorMessage("Failed to allocate decompression buffer", "TEX Load Error");
 			SetResult(memFullErr);
 			return;
 		}
 
-		// RGBA -> ARGB
-		for (size_t i = 0; i < texLoadInfo.header->image_width * texLoadInfo.header->image_height; ++i)
+		// Map the .tex block format to its DXGI equivalent and decompress through
+		// DirectXTex. This covers BC1, BC3, BC5 and BC7 uniformly — the old hand
+		// rolled path only knew DXT1/DXT5 and produced an empty image for BC5/BC7.
+		DXGI_FORMAT srcFormat = DXGI_FORMAT_UNKNOWN;
+		switch (texLoadInfo.header->tex_format)
 		{
-			unsigned long rgba = imageData[i];
-			unsigned char r = (rgba >> 24) & 0xFF;
-			unsigned char g = (rgba >> 16) & 0xFF;
-			unsigned char b = (rgba >> 8) & 0xFF;
-			unsigned char a = rgba & 0xFF;
-
-			finalImage[i] = (
-				(unsigned long)a << 24) |
-				((unsigned long)b << 16) |
-				((unsigned long)g << 8) |
-				((unsigned long)r);
+		case tex_format_dxt1: srcFormat = DXGI_FORMAT_BC1_UNORM; break;
+		case tex_format_dxt5: srcFormat = DXGI_FORMAT_BC3_UNORM; break;
+		case tex_format_bc5:  srcFormat = DXGI_FORMAT_BC5_UNORM; break;
+		case tex_format_bc7:  srcFormat = DXGI_FORMAT_BC7_UNORM; break;
+		default:              srcFormat = DXGI_FORMAT_UNKNOWN;    break;
 		}
 
-		imageData = std::move(finalImage);
-		unsigned int bufferSize = stride * texLoadInfo.header->image_height;
+		if (srcFormat == DXGI_FORMAT_UNKNOWN || !TexIsBlockCompressed(texLoadInfo.header->tex_format))
+		{
+			errorMessage("Unsupported TEX pixel format", "TEX Load Error");
+			SetResult(formatCannotRead);
+			return;
+		}
+
+		// Wrap the raw block data in a DirectXTex Image and decompress to RGBA8.
+		Image srcImage = {};
+		srcImage.width      = imgWidth;
+		srcImage.height     = imgHeight;
+		srcImage.format     = srcFormat;
+		srcImage.rowPitch   = blockWidth * blockSize;
+		srcImage.slicePitch = dataSize;
+		srcImage.pixels     = texLoadInfo.pixelData.get();
+
+		ScratchImage decompressed;
+		HRESULT hr = Decompress(srcImage, DXGI_FORMAT_R8G8B8A8_UNORM, decompressed);
+		if (FAILED(hr))
+		{
+			errorMessage("Failed to decompress TEX pixel data", "TEX Load Error");
+			SetResult(formatCannotRead);
+			return;
+		}
+
+		const Image* outImg = decompressed.GetImage(0, 0, 0);
+
+		// Copy row by row (DirectXTex rowPitch may be padded) into a tight RGBA8 buffer.
+		for (UINT y = 0; y < imgHeight; ++y)
+			memcpy(rgbaImage.get() + y * stride, outImg->pixels + y * outImg->rowPitch, stride);
+
+		// BC5 only stores two channels (R=X, G=Y). DirectXTex leaves B=0, so the
+		// decoded normal map would read flat-black in blue. Reconstruct the Z channel
+		// (B = sqrt(1 - X^2 - Y^2)) and force alpha opaque, matching the Paint.NET
+		// reference reader so normal maps display correctly after a load.
+		if (texLoadInfo.header->tex_format == tex_format_bc5)
+		{
+			for (UINT i = 0; i < imgWidth * imgHeight; ++i)
+			{
+				uint8* px = rgbaImage.get() + i * 4;
+				float nx = px[0] / 255.0f * 2.0f - 1.0f;
+				float ny = px[1] / 255.0f * 2.0f - 1.0f;
+				float nz2 = 1.0f - nx * nx - ny * ny;
+				float nz = nz2 > 0.0f ? sqrtf(nz2) : 0.0f;
+				float fb = nz * 0.5f + 0.5f;
+				int b = static_cast<int>(fb * 255.0f + 0.5f);
+				px[2] = static_cast<uint8>(b < 0 ? 0 : (b > 255 ? 255 : b));
+				px[3] = 255;
+			}
+		}
+
 		Ptr pixelData = sPSBuffer->New(&bufferSize, bufferSize);
 		if (pixelData == NULL)
 		{
@@ -471,7 +509,7 @@ void IntelPlugin::DoReadContinue()
 		}
 
 		// Copy decompressed data to Photoshop buffer
-		memcpy(pixelData, imageData.get(), bufferSize);
+		memcpy(pixelData, rgbaImage.get(), bufferSize);
 
 		// Assign buffer to Photoshop
 		ps.formatRecord->data = pixelData;

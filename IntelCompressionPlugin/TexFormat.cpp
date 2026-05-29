@@ -41,7 +41,7 @@ TEX_HEADER BuildTEXHeader(uint16_t width, uint16_t height, tex_format format, bo
 	memcpy(header.magic, "TEX\0", 4);
 	header.image_width = width;
 	header.image_height = height;
-	header.unk1 = 0;  // Unknown field - using 0 as default
+	header.unk1 = 1;  // Matches Riot/Paint.NET reference files (always 1, not 0)
 	header.tex_format = format;
 	header.unk2 = 0;  // Unknown field - using 0 as default
 	header.has_mipmaps = hasMipmaps;

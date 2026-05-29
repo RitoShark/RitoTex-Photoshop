@@ -22,7 +22,7 @@
 //Be sure also to change the TargetName for the TEXExporter Project in "ConfigurationProperties->General->TargetName" (left click on TEXExporter),
 //both for Win32 and x64 settigns.
 #define TEXExporterPluginName "RitoTex"
-#define TEXExporterPluginVersion " v2.0.0"
+#define TEXExporterPluginVersion " v2.0.2"
 
 // ---------------------------------------------------------------------------
 // Version — single source of truth. The update checker compares this against
@@ -31,8 +31,8 @@
 // ---------------------------------------------------------------------------
 #define RITOTEX_VERSION_MAJOR 2
 #define RITOTEX_VERSION_MINOR 0
-#define RITOTEX_VERSION_PATCH 0
-#define RITOTEX_VERSION_STR   "2.0.0"
+#define RITOTEX_VERSION_PATCH 2
+#define RITOTEX_VERSION_STR   "2.0.2"
 
 // GitHub repository the update checker queries (api.github.com/repos/<owner>/<repo>/releases/latest)
 #define RITOTEX_GITHUB_OWNER  "RitoShark"

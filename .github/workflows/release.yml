@@ -1,0 +1,49 @@
+name: Release
+
+# Publishes a GitHub Release whenever a version tag (v*) is pushed.
+#
+# Why release-only (no compile step)?
+#   RitoTex links against the proprietary Adobe Photoshop SDK, which is NOT
+#   committed to this repo and cannot be redistributed to a CI runner. So the
+#   .8bi is built locally (build.ps1) and uploaded as a release asset. This
+#   workflow's job is to create the published Release that the in-plugin update
+#   checker reads via api.github.com/repos/<owner>/<repo>/releases/latest.
+#
+#   Attaching the binary:
+#     - Build locally:  .\build.ps1
+#     - Then either drag Plugins\x64\RitoTex.8bi onto the release in the browser,
+#       or push the tag with the binary present and let the optional upload step
+#       below grab it (only works for self-hosted runners that have the file).
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required to create releases and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for changelog)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Auto-generate release notes from commits since the previous tag.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — updating notes."
+            gh release edit "$TAG" --generate-notes
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
